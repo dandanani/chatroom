@@ -1,37 +1,112 @@
 {% extends 'base.html' %} {% block content %}
+<style>
+  body {
+    background: skyblue;
+  }
+
+  .message-box {
+    width: 50%;
+    margin: auto;
+    padding: 20px;
+    background: linear-gradient(135deg, #1f1c2c, #928dab);
+    border-radius: 10px;
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.3);
+    color: white;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    height: 70vh;
+  }
+
+  .messages {
+    flex-grow: 1;
+    max-height: 100%;
+    overflow-y: auto;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    backdrop-filter: blur(5px);
+  }
+
+  .text {
+    padding: 10px;
+    margin: 5px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 5px;
+    animation: fadeIn 0.3s ease-in-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .inputs {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-top: 10px;
+  }
+
+  #message {
+    flex-grow: 1;
+    padding: 10px;
+    border-radius: 5px;
+    border: none;
+    outline: none;
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    transition: 0.3s;
+  }
+
+  #message:focus {
+    background: rgba(255, 255, 255, 0.4);
+  }
+
+  #send-btn {
+    padding: 10px 15px;
+    background: #ff416c;
+    border: none;
+    border-radius: 5px;
+    color: white;
+    cursor: pointer;
+    transition: 0.3s;
+  }
+
+  #send-btn:hover {
+    background: #ff4b2b;
+    transform: scale(1.1);
+  }
+</style>
+
 <div class="message-box">
   <h2>Room Code: {{code}}</h2>
   <div class="messages" id="messages"></div>
   <div class="inputs">
-    <input
-      type="text"
-      rows="3"
-      placeholder="Message"
-      name="message"
-      id="message"
-    />
-    <button type="button" name="send" id="send-btn" onClick="sendMessage()">
-      Send
-    </button>
+    <input type="text" rows="3" placeholder="Message" name="message" id="message" onkeypress="handleKeyPress(event)" />
+    <button type="button" name="send" id="send-btn" onClick="sendMessage()">Send</button>
   </div>
 </div>
+
 <script type="text/javascript">
   var socketio = io();
-
   const messages = document.getElementById("messages");
+  const messageInput = document.getElementById("message");
 
   const createMessage = (name, msg) => {
-    const content = `
-    <div class="text">
-        <span>
-            <strong>${name}</strong>: ${msg}
-        </span>
-        <span class="muted">
-            ${new Date().toLocaleString()}
-        </span>
-    </div>
+    const content = document.createElement("div");
+    content.classList.add("text");
+    content.innerHTML = `
+      <span>
+        <strong>${name}</strong>: ${msg}
+      </span>
+      <span class="muted" style="display: block; font-size: 0.8em; color: lightblue;">
+        ${new Date().toLocaleString()}
+      </span>
     `;
-    messages.innerHTML += content;
+    messages.appendChild(content);
+    messages.scrollTop = messages.scrollHeight;
   };
 
   socketio.on("message", (data) => {
@@ -39,14 +114,21 @@
   });
 
   const sendMessage = () => {
-    const message = document.getElementById("message");
-    if (message.value == "") return;
-    socketio.emit("message", { data: message.value });
-    message.value = "";
+    if (messageInput.value.trim() === "") return;
+    socketio.emit("message", { data: messageInput.value });
+    messageInput.value = "";
+  };
+
+  const handleKeyPress = (event) => {
+    if (event.key === "Enter") {
+      sendMessage();
+    }
   };
 </script>
+
 {% for msg in messages %}
 <script type="text/javascript">
   createMessage("{{msg.name}}", "{{msg.message}}");
 </script>
-{% endfor %} {% endblock %}
+{% endfor %}
+{% endblock %}
