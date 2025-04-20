@@ -5,10 +5,13 @@
     background: var(--bg-color, skyblue);
     color: var(--text-color, black);
     transition: background 0.3s, color 0.3s;
+    margin: 0;
+    font-family: Arial, sans-serif;
   }
 
   .message-box {
-    width: 75%;
+    width: 90%;
+    max-width: 600px;
     margin: auto;
     padding: 20px;
     background: linear-gradient(135deg, #ece6fa , #ece6fa);
@@ -16,7 +19,8 @@
     box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.3);
     display: flex;
     flex-direction: column;
-    height: 70vh;
+    height: 80vh;
+    overflow: hidden;
   }
 
   .messages {
@@ -27,6 +31,7 @@
     margin-bottom: 10px;
     background: rgba(255, 255, 255, 0.1);
     backdrop-filter: blur(5px);
+    max-height: calc(80vh - 100px);
   }
 
   .text {
@@ -46,6 +51,8 @@
     display: flex;
     gap: 10px;
     padding-top: 10px;
+    position: relative;
+    z-index: 10;
   }
 
   #message {
@@ -99,6 +106,32 @@
     cursor: pointer;
   }
 
+  @media (max-width: 600px) {
+    .message-box {
+      width: 95%;
+      padding: 15px;
+      height: 90vh;
+    }
+
+    .messages {
+      max-height: calc(70vh - 80px);
+    }
+
+    .inputs {
+      position: absolute;
+      bottom: 20px;
+      width: 100%;
+      padding-bottom: 30px;
+    }
+
+    #message {
+      width: 80%;
+    }
+
+    #send-btn {
+      width: 15%;
+    }
+  }
 </style>
 
 <div class="message-box">
@@ -118,7 +151,6 @@
 
   <div class="inputs">
     <input type="text" placeholder="Message" id="message" onkeypress="handleKeyPress(event)" oninput="notifyTyping()" />
-    <input type="text" placeholder="To (optional)" id="private-to" style="width: 100px;" />
     <button id="send-btn" onClick="sendMessage()">Send</button>
   </div>
 </div>
@@ -128,7 +160,6 @@
   const messages = document.getElementById("messages");
   const messageInput = document.getElementById("message");
   const typingIndicator = document.getElementById("typing-indicator");
-  const privateTo = document.getElementById("private-to");
   const mode = "{{ mode }}"; // Injected by Flask
 
   let typingTimeout;
@@ -165,9 +196,8 @@
 
   const sendMessage = () => {
     const msg = messageInput.value.trim();
-    const recipient = privateTo.value.trim();
     if (msg === "") return;
-    socketio.emit("message", { data: msg, to: recipient });
+    socketio.emit("message", { data: msg });
     messageInput.value = "";
   };
 
