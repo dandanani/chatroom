@@ -86,8 +86,8 @@ def message(data):
     if mode == "privacy":
         # In privacy mode, store only last 5 messages
         rooms[room]["messages"].append(content)
-        if len(rooms[room]["messages"]) > 5:
-            rooms[room]["messages"] = rooms[room]["messages"][-5:]
+        if len(rooms[room]["messages"]) > 8:
+            rooms[room]["messages"] = rooms[room]["messages"][-8:]
     else:
         # In full chat mode, store up to MAX_MESSAGES
         rooms[room]["messages"].append(content)
