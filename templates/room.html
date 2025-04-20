@@ -1,7 +1,10 @@
-{% extends 'base.html' %} {% block content %}
+{% extends 'base.html' %}
+{% block content %}
 <style>
   body {
-    background: skyblue;
+    background: var(--bg-color, skyblue);
+    color: var(--text-color, black);
+    transition: background 0.3s, color 0.3s;
   }
 
   .message-box {
@@ -11,8 +14,6 @@
     background: linear-gradient(135deg, #ece6fa , #ece6fa);
     border-radius: 10px;
     box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.3);
-    color: black;
-    text-align: center;
     display: flex;
     flex-direction: column;
     height: 70vh;
@@ -20,12 +21,11 @@
 
   .messages {
     flex-grow: 1;
-    max-height: 100%;
     overflow-y: auto;
     padding: 10px;
-    background: rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     margin-bottom: 10px;
+    background: rgba(255, 255, 255, 0.1);
     backdrop-filter: blur(5px);
   }
 
@@ -44,7 +44,6 @@
 
   .inputs {
     display: flex;
-    align-items: center;
     gap: 10px;
     padding-top: 10px;
   }
@@ -57,11 +56,6 @@
     outline: none;
     background: rgba(255, 255, 255, 0.2);
     color: black;
-    transition: 0.3s;
-  }
-
-  #message:focus {
-    background: rgba(255, 255, 255, 0.4);
   }
 
   #send-btn {
@@ -71,64 +65,135 @@
     border-radius: 5px;
     color: white;
     cursor: pointer;
-    transition: 0.3s;
   }
 
   #send-btn:hover {
     background: #ff4b2b;
-    transform: scale(1.1);
   }
+
+  .controls {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    align-items: center;
+  }
+
+  .typing {
+    font-size: 0.9em;
+    color: #333;
+  }
+
+  .dark-mode-toggle {
+    cursor: pointer;
+    background: #222;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+  }
+
+  .leave-btn {
+    background: crimson;
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
 </style>
 
 <div class="message-box">
-  <h2>Room Code: {{code}}</h2>
+  <div class="controls">
+    <div>
+      <strong>Room Code:</strong> {{code}} |
+      <strong>Users:</strong> <span id="user-count">1</span>
+    </div>
+    <div>
+      <button class="dark-mode-toggle" onclick="toggleDarkMode()">🌓 Toggle Dark</button>
+      <button class="leave-btn" onclick="leaveRoom()">🚪 Leave</button>
+    </div>
+  </div>
+
   <div class="messages" id="messages"></div>
+  <div class="typing" id="typing-indicator"></div>
+
   <div class="inputs">
-    <input type="text" rows="3" placeholder="Message" name="message" id="message" onkeypress="handleKeyPress(event)" />
-    <button type="button" name="send" id="send-btn" onClick="sendMessage()">Send</button>
+    <input type="text" placeholder="Message" id="message" onkeypress="handleKeyPress(event)" oninput="notifyTyping()" />
+    <input type="text" placeholder="To (optional)" id="private-to" style="width: 100px;" />
+    <button id="send-btn" onClick="sendMessage()">Send</button>
   </div>
 </div>
 
 <script type="text/javascript">
-  var socketio = io();
+  const socketio = io();
   const messages = document.getElementById("messages");
   const messageInput = document.getElementById("message");
+  const typingIndicator = document.getElementById("typing-indicator");
+  const privateTo = document.getElementById("private-to");
+  const mode = "{{ mode }}"; // Injected by Flask
 
-  const createMessage = (name, msg) => {
+  let typingTimeout;
+
+  const createMessage = (name, msg, isPrivate = false) => {
     const content = document.createElement("div");
     content.classList.add("text");
     content.innerHTML = `
-      <span>
-        <strong>${name}</strong>: ${msg}
-      </span>
-      <span class="muted" style="display: block; font-size: 0.8em; color: lightblue;">
-        ${new Date().toLocaleString()}
-      </span>
+      <span><strong>${name}</strong>${isPrivate ? " (private)" : ""}: ${msg}</span>
+      <span class="muted" style="font-size: 0.8em; display:block;">${new Date().toLocaleString()}</span>
     `;
     messages.appendChild(content);
     messages.scrollTop = messages.scrollHeight;
+
+    // ✅ Auto-delete oldest if in privacy mode
+    if (mode === "privacy" && messages.children.length > 5) {
+      messages.removeChild(messages.firstChild);
+    }
   };
 
-  socketio.on("message", (data) => {
-    createMessage(data.name, data.message);
+  socketio.on("message", data => {
+    createMessage(data.name, data.message, data.private);
+  });
+
+  socketio.on("user_count", count => {
+    document.getElementById("user-count").innerText = count;
+  });
+
+  socketio.on("typing", data => {
+    typingIndicator.innerText = `${data.name} is typing...`;
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => typingIndicator.innerText = "", 1500);
   });
 
   const sendMessage = () => {
-    if (messageInput.value.trim() === "") return;
-    socketio.emit("message", { data: messageInput.value });
+    const msg = messageInput.value.trim();
+    const recipient = privateTo.value.trim();
+    if (msg === "") return;
+    socketio.emit("message", { data: msg, to: recipient });
     messageInput.value = "";
   };
 
-  const handleKeyPress = (event) => {
-    if (event.key === "Enter") {
-      sendMessage();
-    }
+  const handleKeyPress = event => {
+    if (event.key === "Enter") sendMessage();
+  };
+
+  const notifyTyping = () => {
+    socketio.emit("typing");
+  };
+
+  const toggleDarkMode = () => {
+    const isDark = document.body.style.getPropertyValue("--bg-color") === "black";
+    document.body.style.setProperty("--bg-color", isDark ? "skyblue" : "black");
+    document.body.style.setProperty("--text-color", isDark ? "black" : "white");
+  };
+
+  const leaveRoom = () => {
+    socketio.emit("leave_room");
+    window.location.href = "/";
   };
 </script>
 
 {% for msg in messages %}
 <script type="text/javascript">
-  createMessage("{{msg.name}}", "{{msg.message}}");
+  createMessage("{{msg.name}}", "{{msg.message}}", {{msg.private|default(false)|tojson}});
 </script>
 {% endfor %}
 {% endblock %}
