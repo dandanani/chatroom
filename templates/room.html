@@ -219,6 +219,24 @@
     socketio.emit("leave_room");
     window.location.href = "/";
   };
+
+  // Handle mobile keyboard open event to adjust the layout
+  window.addEventListener("focusin", () => {
+    if (window.innerHeight <= 600) { // Check for mobile view
+      document.body.style.height = '100vh';
+      document.querySelector('.message-box').style.height = '100vh';
+      document.querySelector('.inputs').style.position = 'absolute';
+      document.querySelector('.inputs').style.bottom = '0';
+    }
+  });
+
+  window.addEventListener("focusout", () => {
+    if (window.innerHeight <= 600) { // Check for mobile view
+      document.body.style.height = 'auto';
+      document.querySelector('.message-box').style.height = '80vh';
+      document.querySelector('.inputs').style.position = 'relative';
+    }
+  });
 </script>
 
 {% for msg in messages %}
