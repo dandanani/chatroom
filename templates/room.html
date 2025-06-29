@@ -1,81 +1,80 @@
 {% extends 'base.html' %}
 {% block content %}
 <style>
-  html, body {
-    height: 100%;
-    width: 100%;
+  body {
     margin: 0;
-    padding: 0;
-    overflow: hidden;
     font-family: Arial, sans-serif;
-    background: #ece6fa;
-    color: #000;
+    background: var(--bg-color, skyblue);
+    color: var(--text-color, black);
+    overflow: hidden;
+    height: 100dvh;
   }
 
   .message-box {
     position: fixed;
-    top: 0;
+    bottom: 0;
     left: 0;
-    width: 100vw;
-    height: 100vh;
+    right: 0;
+    top: 0;
+    margin: 0 auto;
+    max-width: 600px;
     display: flex;
     flex-direction: column;
-    background: #ece6fa;
+    padding: 10px;
+    background: linear-gradient(135deg, #ece6fa, #ece6fa);
+    box-shadow: 0 0 5px rgba(0,0,0,0.3);
   }
 
   .controls {
-    padding: 10px;
-    background: transparent;
     display: flex;
     justify-content: space-between;
+    align-items: center;
     font-size: 0.9em;
+    margin-bottom: 8px;
   }
 
   .messages {
     flex: 1;
     overflow-y: auto;
-    padding: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 8px;
+    padding: 8px;
+    margin-bottom: 8px;
   }
 
   .text {
-    background: rgba(0, 0, 0, 0.08);
     padding: 12px;
-    border-radius: 10px;
+    margin-bottom: 8px;
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 6px;
     word-wrap: break-word;
-    font-size: 1.1em;
-    align-self: flex-start;
-    max-width: 85%;
+    font-size: 1em;
   }
 
   .typing {
-    height: 1em;
-    margin: 0 10px;
-    font-size: 0.85em;
+    height: 1.2em;
+    font-size: 0.9em;
+    margin: 4px 0;
     color: #333;
   }
 
   .inputs {
-    padding: 8px;
     display: flex;
+    gap: 8px;
     align-items: center;
-    gap: 5px;
     background: #ece6fa;
-    position: sticky;
-    bottom: 0;
-    width: 100%;
+    padding: 8px;
+    border-top: 1px solid #ccc;
   }
 
   #message {
     flex: 1;
+    padding: 10px 12px;
     border-radius: 20px;
-    border: 1px solid #ccc;
-    padding: 10px 15px;
+    border: none;
+    background: white;
     font-size: 1em;
     outline: none;
-    background: white;
   }
 
   #send-btn {
@@ -83,54 +82,65 @@
     color: white;
     border: none;
     border-radius: 50%;
-    width: 45px;
-    height: 45px;
+    width: 40px;
+    height: 40px;
     font-size: 1.2em;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    cursor: pointer;
   }
 
   #send-btn:hover {
     background: #ff4b2b;
   }
 
-  .dark-mode-toggle, .leave-btn {
-    padding: 5px 10px;
+  .dark-mode-toggle,
+  .leave-btn {
+    padding: 5px 8px;
+    font-size: 0.85em;
     border-radius: 4px;
     border: none;
+    cursor: pointer;
     color: white;
-    font-size: 0.9em;
   }
 
   .dark-mode-toggle {
-    background: #222;
+    background: #333;
   }
 
   .leave-btn {
     background: crimson;
   }
 
+  @media (max-width: 600px) {
+    .message-box {
+      width: 100%;
+      border-radius: 0;
+    }
+
+    #message {
+      font-size: 1em;
+    }
+
+    .text {
+      font-size: 1em;
+    }
+  }
 </style>
 
 <div class="message-box">
   <div class="controls">
+    <div><strong>Room Code:</strong> {{code}} | <strong>Users:</strong> <span id="user-count">1</span></div>
     <div>
-      <strong>Room Code:</strong> {{code}} |
-      <strong>Users:</strong> <span id="user-count">1</span>
-    </div>
-    <div>
-      <button class="dark-mode-toggle" onclick="toggleDarkMode()">Toggle Dark</button>
-      <button class="leave-btn" onclick="leaveRoom()">Leave</button>
+      <button class="dark-mode-toggle" onclick="toggleDarkMode()">🌓</button>
+      <button class="leave-btn" onclick="leaveRoom()">🚪</button>
     </div>
   </div>
 
   <div class="messages" id="messages"></div>
   <div class="typing" id="typing-indicator"></div>
 
-  <div class="inputs">
-    <input type="text" id="message" placeholder="Message" onkeypress="handleKeyPress(event)" oninput="notifyTyping()" />
-    <button id="send-btn" onclick="sendMessage()">&#9658;</button>
+  <div class="inputs" id="input-wrapper">
+    <input type="text" placeholder="Type a message" id="message" onkeypress="handleKeyPress(event)" oninput="notifyTyping()" />
+    <button id="send-btn" onclick="sendMessage()">➤</button>
   </div>
 </div>
 
@@ -140,12 +150,16 @@
   const messageInput = document.getElementById("message");
   const typingIndicator = document.getElementById("typing-indicator");
   const mode = "{{ mode }}";
+
   let typingTimeout;
 
   const createMessage = (name, msg, isPrivate = false) => {
     const content = document.createElement("div");
     content.classList.add("text");
-    content.innerHTML = `<strong>${name}</strong>${isPrivate ? " (private)" : ""}: ${msg}`;
+    content.innerHTML = `
+      <strong>${name}</strong>${isPrivate ? " (private)" : ""}: ${msg}<br>
+      <small style="opacity: 0.6;">${new Date().toLocaleString()}</small>
+    `;
     messages.appendChild(content);
     messages.scrollTop = messages.scrollHeight;
 
@@ -184,20 +198,31 @@
   };
 
   const toggleDarkMode = () => {
-    document.body.classList.toggle("dark-mode");
+    const isDark = document.body.style.getPropertyValue("--bg-color") === "black";
+    document.body.style.setProperty("--bg-color", isDark ? "skyblue" : "black");
+    document.body.style.setProperty("--text-color", isDark ? "black" : "white");
   };
 
   const leaveRoom = () => {
     socketio.emit("leave_room");
     window.location.href = "/";
   };
+
+  // ✅ WhatsApp-style: Keep input above keyboard
+  window.addEventListener("resize", () => {
+    messages.scrollTop = messages.scrollHeight;
+  });
+
+  window.addEventListener("focusin", () => {
+    setTimeout(() => {
+      messages.scrollTop = messages.scrollHeight;
+    }, 300); // Wait for keyboard animation
+  });
 </script>
 
 {% for msg in messages %}
 <script type="text/javascript">
-  document.addEventListener('DOMContentLoaded', () => {
-    createMessage("{{msg.name}}", "{{msg.message}}", {{msg.private|default(false)|tojson}});
-  });
+  createMessage("{{msg.name}}", "{{msg.message}}", {{msg.private|default(false)|tojson}});
 </script>
 {% endfor %}
 {% endblock %}
