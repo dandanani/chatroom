@@ -1,18 +1,22 @@
 {% extends 'base.html' %}
 {% block content %}
 <style>
+  /* Basic Reset and Global Styles */
   html, body {
     height: 100%;
     width: 100%;
     margin: 0;
     padding: 0;
-    overflow: hidden; /* Prevent body/html scroll, let message-box manage */
+    overflow: hidden; /* Prevent scrolling on the html/body level */
     font-family: Arial, sans-serif;
-    box-sizing: border-box;
-    -webkit-overflow-scrolling: touch; /* For smoother scrolling on iOS */
+    box-sizing: border-box; /* Include padding/border in element's total width and height */
+    -webkit-overflow-scrolling: touch; /* Enable smooth scrolling on iOS */
+  }
 
-    /* Default Light Mode Variables */
-    --bg-color: skyblue; /* Covered by message-box */
+  /* CSS Variables for Theming */
+  :root { /* Using :root for global variables */
+    /* Light Mode */
+    --bg-color: skyblue; /* Will be covered by message-box */
     --text-color: black;
     --message-box-bg: linear-gradient(135deg, #ece6fa, #ece6fa);
     --message-bg: rgba(0, 0, 0, 0.08);
@@ -20,10 +24,11 @@
     --input-color: black;
     --typing-color: #333;
     --input-shadow: none;
+    --button-text-color: white; /* Default button text color */
   }
 
-  /* Dark Mode Variables */
   html[data-theme='dark'] {
+    /* Dark Mode */
     --bg-color: black;
     --text-color: white;
     --message-box-bg: linear-gradient(135deg, #333, #555);
@@ -38,17 +43,25 @@
     background: var(--bg-color);
     color: var(--text-color);
     transition: background 0.3s, color 0.3s;
+    display: flex; /* Use flexbox to correctly position message-box */
+    justify-content: center;
+    align-items: center;
+    height: 100%; /* Ensure body takes full html height */
+    width: 100%; /* Ensure body takes full html width */
   }
 
   .message-box {
-    width: 100%;
-    height: 100vh; /* Takes full viewport height on desktop, adjusted by JS for mobile */
+    width: 100%; /* Full width */
+    height: 100%; /* Initially 100%, JS will adjust for mobile keyboard */
+    max-width: 100%; /* Ensure it doesn't exceed 100% on desktop */
+    max-height: 100%; /* Ensure it doesn't exceed 100% on desktop */
     padding: 20px; /* Overall padding for the chat interface */
     background: var(--message-box-bg);
     display: flex;
     flex-direction: column; /* Stack children vertically */
     box-sizing: border-box;
     overflow: hidden; /* Ensures inner scrolling elements don't cause outer scroll */
+    /* Removed border-radius/box-shadow for full-screen appearance */
   }
 
   .controls {
@@ -58,10 +71,16 @@
     align-items: center;
     padding: 0 5px; /* Aligns with message text padding */
     flex-shrink: 0; /* Prevents shrinking */
+    flex-grow: 0; /* Prevents growing */
+    min-height: 30px; /* Ensure a minimum height */
+  }
+
+  .controls div:first-child {
+      white-space: nowrap; /* Prevent "Room Code" and "Users" from wrapping */
   }
 
   .messages {
-    flex-grow: 1; /* Takes all available space */
+    flex-grow: 1; /* This will take all available space */
     overflow-y: auto; /* Enables scrolling within messages */
     padding: 15px;
     border-radius: 8px;
@@ -79,6 +98,7 @@
     border-radius: 5px;
     animation: fadeIn 0.3s ease-in-out;
     word-wrap: break-word;
+    color: var(--text-color); /* Ensure text color changes with dark mode */
   }
 
   @keyframes fadeIn {
@@ -99,6 +119,7 @@
     padding: 0 5px;
     height: 1.2em; /* Reserve space */
     flex-shrink: 0;
+    flex-grow: 0;
   }
 
   .inputs {
@@ -106,6 +127,7 @@
     gap: 10px;
     padding-top: 10px;
     flex-shrink: 0; /* Prevents shrinking */
+    flex-grow: 0; /* Prevents growing */
     /* On desktop, this will naturally sit at the bottom of the flex column */
   }
 
@@ -125,7 +147,7 @@
     background: #ff416c;
     border: none;
     border-radius: 5px;
-    color: white;
+    color: var(--button-text-color);
     cursor: pointer;
     font-size: 1em;
     flex-shrink: 0;
@@ -142,24 +164,23 @@
     border-radius: 4px;
     font-size: 0.9em;
     border: none;
+    color: var(--button-text-color); /* Ensure button text color adapts */
   }
 
   .dark-mode-toggle {
     background: #222;
-    color: white;
   }
 
   .leave-btn {
     background: crimson;
-    color: white;
     margin-left: 10px;
   }
 
-  /* Mobile Specific Styles - Adjusting inputs and message-box padding/height */
+  /* Mobile Specific Styles */
   @media (max-width: 768px) {
     .message-box {
       padding: 10px; /* Overall padding reduced for mobile */
-      height: 100%; /* Keep 100% height, JS will adjust */
+      height: 100%; /* Will be managed by JS, not 100vh directly */
     }
 
     .messages {
@@ -174,6 +195,7 @@
     .controls {
       margin-bottom: 10px;
       padding: 0;
+      font-size: 0.9em; /* Slightly smaller text for controls on mobile */
     }
 
     .typing {
@@ -188,7 +210,7 @@
       width: 100%;
       padding: 10px;
       padding-bottom: calc(10px + env(safe-area-inset-bottom)); /* Account for notch */
-      background: var(--message-box-bg);
+      background: var(--message-box-bg); /* Match background */
       box-sizing: border-box;
       z-index: 1000;
       box-shadow: var(--input-shadow);
@@ -225,9 +247,11 @@
   const messageBox = document.querySelector('.message-box');
   const controls = document.querySelector('.controls');
   const inputs = document.querySelector('.inputs');
+  const body = document.body; // Reference to the body element
   const mode = "{{ mode }}";
 
   let typingTimeout;
+  let initialViewportHeight = window.innerHeight; // Store initial height when app loads
 
   const createMessage = (name, msg, isPrivate = false) => {
     const content = document.createElement("div");
@@ -237,7 +261,7 @@
       <span class="muted" style="font-size: 0.8em; display:block; margin-top: 5px; opacity: 0.7;">${new Date().toLocaleString()}</span>
     `;
     messages.appendChild(content);
-    messages.scrollTop = messages.scrollHeight;
+    messages.scrollTop = messages.scrollHeight; // Scroll to bottom
   };
 
   socketio.on("message", data => {
@@ -290,52 +314,62 @@
     window.location.href = "/";
   };
 
-  // --- Mobile Keyboard and Layout Adjustment ---
-  const adjustLayoutForKeyboard = () => {
+  // --- Advanced Mobile Keyboard and Layout Adjustment ---
+  const adjustLayout = () => {
     const isMobile = window.innerWidth <= 768; // Our mobile breakpoint
 
-    // Calculate fixed height of non-scrolling elements
-    const controlsHeight = controls.offsetHeight + parseFloat(getComputedStyle(controls).marginBottom);
-    const typingIndicatorHeight = typingIndicator.offsetHeight + parseFloat(getComputedStyle(typingIndicator).marginBottom);
-    const inputsHeight = inputs.offsetHeight + parseFloat(getComputedStyle(inputs).paddingBottom); // Includes padding-bottom and safe-area
+    // Calculate dynamic heights of non-scrolling elements
+    const controlsHeight = controls.offsetHeight + parseFloat(getComputedStyle(controls).marginBottom || '0');
+    const typingIndicatorHeight = typingIndicator.offsetHeight + parseFloat(getComputedStyle(typingIndicator).marginBottom || '0');
+    const inputsComputedStyle = getComputedStyle(inputs);
+    const inputsHeight = inputs.offsetHeight + parseFloat(inputsComputedStyle.paddingBottom || '0') + parseFloat(inputsComputedStyle.paddingTop || '0'); // Sum of inputs total height including its padding
 
     // Get the base padding from .message-box (top + bottom)
-    const messageBoxPaddingTop = parseFloat(getComputedStyle(messageBox).paddingTop);
-    const messageBoxPaddingBottom = parseFloat(getComputedStyle(messageBox).paddingBottom);
+    const messageBoxPaddingTop = parseFloat(getComputedStyle(messageBox).paddingTop || '0');
+    const messageBoxPaddingBottom = parseFloat(getComputedStyle(messageBox).paddingBottom || '0');
 
     if (isMobile) {
-      // Set messageBox height to the current visible viewport height (which shrinks with keyboard)
-      messageBox.style.height = `${window.innerHeight}px`;
+        // Set the height of the body to the current visual viewport height
+        // This is crucial for fixing the "website spread" and keyboard overlap
+        body.style.height = `${window.innerHeight}px`;
+        messageBox.style.height = `${window.innerHeight}px`; // message-box takes full calculated height
 
-      // Calculate the remaining height for messages within the current viewport
-      const availableHeightForMessages = window.innerHeight - (messageBoxPaddingTop + messageBoxPaddingBottom) - controlsHeight - typingIndicatorHeight - inputsHeight;
+        // Calculate available height for messages within the current visual viewport
+        const availableHeightForMessages = window.innerHeight - (messageBoxPaddingTop + messageBoxPaddingBottom) - controlsHeight - typingIndicatorHeight - inputsHeight;
 
-      messages.style.maxHeight = `${availableHeightForMessages}px`;
-      messages.style.height = `${availableHeightForMessages}px`; // Explicitly set height
-      messages.scrollTop = messages.scrollHeight; // Scroll to bottom
+        messages.style.maxHeight = `${availableHeightForMessages}px`;
+        messages.style.height = `${availableHeightForMessages}px`; // Explicitly set height for consistency
+        messages.scrollTop = messages.scrollHeight; // Scroll to bottom
     } else {
-      // Desktop: Reset messageBox height to full viewport
-      messageBox.style.height = '100vh';
-      // Recalculate based on full desktop view
-      const availableHeightForMessages = window.innerHeight - (messageBoxPaddingTop + messageBoxPaddingBottom) - controlsHeight - typingIndicatorHeight - inputsHeight;
-      messages.style.maxHeight = `${availableHeightForMessages}px`;
-      messages.style.height = 'auto'; // Let flex-grow manage on desktop
-      messages.scrollTop = messages.scrollHeight;
+        // Desktop: Reset body and messageBox height to full viewport
+        body.style.height = '100%';
+        messageBox.style.height = '100vh'; // Use 100vh for desktop
+
+        // Recalculate based on full desktop view
+        const availableHeightForMessages = window.innerHeight - (messageBoxPaddingTop + messageBoxPaddingBottom) - controlsHeight - typingIndicatorHeight - inputsHeight;
+        messages.style.maxHeight = `${availableHeightForMessages}px`;
+        messages.style.height = 'auto'; // Let flex-grow manage on desktop
+        messages.scrollTop = messages.scrollHeight;
     }
   };
 
-  // Add listeners for dynamic adjustment
-  window.addEventListener('resize', adjustLayoutForKeyboard); // For orientation change & keyboard appearance
-  messageInput.addEventListener('focus', adjustLayoutForKeyboard); // When input gains focus (keyboard opens)
-  messageInput.addEventListener('blur', adjustLayoutForKeyboard); // When input loses focus (keyboard closes)
+  // Event Listeners for dynamic adjustment
+  // Use 'resize' and 'orientationchange' for general layout changes
+  window.addEventListener('resize', adjustLayout);
+  window.addEventListener('orientationchange', adjustLayout);
+
+  // Use 'focus' and 'blur' for precise keyboard open/close detection
+  messageInput.addEventListener('focus', adjustLayout);
+  messageInput.addEventListener('blur', adjustLayout);
+
 
   // Initial layout adjustment on page load
   document.addEventListener('DOMContentLoaded', () => {
-    adjustLayoutForKeyboard();
+    adjustLayout();
     messages.scrollTop = messages.scrollHeight; // Ensure initial scroll to bottom
   });
 
-  // Re-adjust layout whenever new messages are added to maintain scroll position
+  // Observe messages for new content to ensure scroll to bottom
   const observer = new MutationObserver(() => {
     messages.scrollTop = messages.scrollHeight;
   });
