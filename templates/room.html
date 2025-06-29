@@ -8,141 +8,99 @@
     padding: 0;
     overflow: hidden;
     font-family: Arial, sans-serif;
-    box-sizing: border-box;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain;
+    background: #ece6fa;
+    color: #000;
   }
 
-  :root {
-    --text-color: black;
-    --message-box-bg: linear-gradient(135deg, #ece6fa, #ece6fa);
-    --message-bg: rgba(0, 0, 0, 0.08);
-    --input-bg: rgba(255, 255, 255, 0.2);
-    --input-color: black;
-    --typing-color: #333;
-    --button-text-color: white;
-  }
-
-  html[data-theme='dark'] {
-    --text-color: white;
-    --message-box-bg: linear-gradient(135deg, #333, #555);
-    --message-bg: rgba(255, 255, 255, 0.15);
-    --input-bg: rgba(255, 255, 255, 0.3);
-    --input-color: white;
-    --typing-color: #ccc;
-  }
-
-  body {
-    background: var(--message-box-bg);
-    color: var(--text-color);
-    transition: background 0.3s, color 0.3s;
+  .message-box {
     position: fixed;
     top: 0;
     left: 0;
-    right: 0;
-    bottom: 0;
-    height: 100vh;
     width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: #ece6fa;
+  }
+
+  .controls {
+    padding: 10px;
+    background: transparent;
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.9em;
+  }
+
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .text {
+    background: rgba(0, 0, 0, 0.08);
+    padding: 12px;
+    border-radius: 10px;
+    word-wrap: break-word;
+    font-size: 1.1em;
+    align-self: flex-start;
+    max-width: 85%;
+  }
+
+  .typing {
+    height: 1em;
+    margin: 0 10px;
+    font-size: 0.85em;
+    color: #333;
+  }
+
+  .inputs {
+    padding: 8px;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: #ece6fa;
+    position: sticky;
+    bottom: 0;
+    width: 100%;
+  }
+
+  #message {
+    flex: 1;
+    border-radius: 20px;
+    border: 1px solid #ccc;
+    padding: 10px 15px;
+    font-size: 1em;
+    outline: none;
+    background: white;
+  }
+
+  #send-btn {
+    background: #ff416c;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 45px;
+    height: 45px;
+    font-size: 1.2em;
     display: flex;
     justify-content: center;
     align-items: center;
   }
 
-  .message-box {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    padding: 10px;
-    background: var(--message-box-bg);
-    display: flex;
-    flex-direction: column;
-    box-sizing: border-box;
-    overflow: hidden;
+  #send-btn:hover {
+    background: #ff4b2b;
   }
 
-  .controls {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0 5px;
-    flex-shrink: 0;
+  .dark-mode-toggle, .leave-btn {
+    padding: 5px 10px;
+    border-radius: 4px;
+    border: none;
+    color: white;
     font-size: 0.9em;
-  }
-
-  .messages {
-    flex-grow: 1;
-    overflow-y: auto;
-    padding: 8px;
-    margin-top: 5px;
-    background: var(--message-bg);
-    border-radius: 8px;
-    backdrop-filter: blur(5px);
-    -webkit-overflow-scrolling: touch;
-    height: auto;
-    font-size: 1.1em;
-  }
-
-  .text {
-    padding: 14px;
-    margin-bottom: 10px;
-    background: var(--message-bg);
-    border-radius: 6px;
-    color: var(--text-color);
-    word-wrap: break-word;
-  }
-
-  .typing {
-    font-size: 0.9em;
-    color: var(--typing-color);
-    padding: 0 5px;
-    margin-top: 5px;
-    height: 1.2em;
-    flex-shrink: 0;
-  }
-
-  .inputs {
-    display: flex;
-    gap: 10px;
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    padding: 10px;
-    padding-bottom: calc(12px + env(safe-area-inset-bottom));
-    background: var(--message-box-bg);
-    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
-    z-index: 10;
-  }
-
-  #message {
-    flex-grow: 1;
-    padding: 14px;
-    border-radius: 6px;
-    border: none;
-    outline: none;
-    font-size: 1em;
-    background: var(--input-bg);
-    color: var(--input-color);
-  }
-
-  #send-btn {
-    padding: 14px 18px;
-    background: #ff416c;
-    border: none;
-    border-radius: 6px;
-    color: var(--button-text-color);
-    font-size: 1em;
-  }
-
-  .dark-mode-toggle,
-  .leave-btn {
-    font-size: 0.85em;
-    padding: 6px 10px;
-    border-radius: 5px;
-    border: none;
-    color: var(--button-text-color);
   }
 
   .dark-mode-toggle {
@@ -151,23 +109,19 @@
 
   .leave-btn {
     background: crimson;
-    margin-left: 8px;
   }
 
-  .messages::-webkit-scrollbar {
-    width: 0;
-  }
-  .messages {
-    scrollbar-width: none;
-  }
 </style>
 
 <div class="message-box">
   <div class="controls">
-    <div><strong>Room Code:</strong> {{code}} | <strong>Users:</strong> <span id="user-count">1</span></div>
     <div>
-      <button class="dark-mode-toggle" onclick="toggleDarkMode()">🌓 Toggle Dark</button>
-      <button class="leave-btn" onclick="leaveRoom()">🚪 Leave</button>
+      <strong>Room Code:</strong> {{code}} |
+      <strong>Users:</strong> <span id="user-count">1</span>
+    </div>
+    <div>
+      <button class="dark-mode-toggle" onclick="toggleDarkMode()">Toggle Dark</button>
+      <button class="leave-btn" onclick="leaveRoom()">Leave</button>
     </div>
   </div>
 
@@ -175,8 +129,8 @@
   <div class="typing" id="typing-indicator"></div>
 
   <div class="inputs">
-    <input type="text" placeholder="Message" id="message" onkeypress="handleKeyPress(event)" oninput="notifyTyping()" />
-    <button id="send-btn" onclick="sendMessage()">Send</button>
+    <input type="text" id="message" placeholder="Message" onkeypress="handleKeyPress(event)" oninput="notifyTyping()" />
+    <button id="send-btn" onclick="sendMessage()">&#9658;</button>
   </div>
 </div>
 
@@ -185,20 +139,16 @@
   const messages = document.getElementById("messages");
   const messageInput = document.getElementById("message");
   const typingIndicator = document.getElementById("typing-indicator");
-  const messageBox = document.querySelector('.message-box');
-  const controls = document.querySelector('.controls');
-  const inputs = document.querySelector('.inputs');
-  const body = document.body;
-  const html = document.documentElement;
   const mode = "{{ mode }}";
   let typingTimeout;
 
   const createMessage = (name, msg, isPrivate = false) => {
     const content = document.createElement("div");
     content.classList.add("text");
-    content.innerHTML = `<strong>${name}</strong>${isPrivate ? " (private)" : ""}: ${msg}<br><span style="font-size: 0.75em; opacity: 0.6;">${new Date().toLocaleString()}</span>`;
+    content.innerHTML = `<strong>${name}</strong>${isPrivate ? " (private)" : ""}: ${msg}`;
     messages.appendChild(content);
     messages.scrollTop = messages.scrollHeight;
+
     if (mode === "privacy" && messages.children.length > 5) {
       messages.removeChild(messages.firstChild);
     }
@@ -226,10 +176,7 @@
   };
 
   const handleKeyPress = event => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      sendMessage();
-    }
+    if (event.key === "Enter") sendMessage();
   };
 
   const notifyTyping = () => {
@@ -237,51 +184,17 @@
   };
 
   const toggleDarkMode = () => {
-    const isDark = html.getAttribute('data-theme') === 'dark';
-    if (isDark) html.removeAttribute('data-theme');
-    else html.setAttribute('data-theme', 'dark');
+    document.body.classList.toggle("dark-mode");
   };
 
   const leaveRoom = () => {
     socketio.emit("leave_room");
     window.location.href = "/";
   };
-
-  const adjustLayout = () => {
-    if (window.innerWidth <= 768) {
-      const viewHeight = window.innerHeight;
-      body.style.height = `${viewHeight}px`;
-      messageBox.style.height = `${viewHeight}px`;
-
-      const h = viewHeight
-        - controls.offsetHeight
-        - typingIndicator.offsetHeight
-        - inputs.offsetHeight
-        - parseFloat(getComputedStyle(messageBox).paddingTop)
-        - parseFloat(getComputedStyle(messageBox).paddingBottom);
-      messages.style.height = `${h}px`;
-      messages.style.maxHeight = `${h}px`;
-      messages.scrollTop = messages.scrollHeight;
-    }
-  };
-
-  window.addEventListener('resize', adjustLayout);
-  messageInput.addEventListener('focus', adjustLayout);
-  messageInput.addEventListener('blur', adjustLayout);
-
-  document.addEventListener('DOMContentLoaded', () => {
-    adjustLayout();
-    messages.scrollTop = messages.scrollHeight;
-  });
-
-  const observer = new MutationObserver(() => {
-    messages.scrollTop = messages.scrollHeight;
-  });
-  observer.observe(messages, { childList: true });
 </script>
 
 {% for msg in messages %}
-<script>
+<script type="text/javascript">
   document.addEventListener('DOMContentLoaded', () => {
     createMessage("{{msg.name}}", "{{msg.message}}", {{msg.private|default(false)|tojson}});
   });
