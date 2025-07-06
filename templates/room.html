@@ -1,146 +1,164 @@
 {% extends 'base.html' %}
 {% block content %}
 <style>
-  body {
+  html, body {
     margin: 0;
+    padding: 0;
+    height: 100%; /* Ensures body takes full viewport height */
+    background: var(--bg-color, #ece6fa); /* Default light background */
+    color: var(--text-color, black); /* Default text color */
     font-family: Arial, sans-serif;
-    background: var(--bg-color, skyblue);
-    color: var(--text-color, black);
-    overflow: hidden;
-    height: 100dvh;
+    transition: background 0.3s, color 0.3s; /* Smooth theme transition */
+    overflow: hidden; /* Prevent body scrolling, let internal divs scroll */
   }
 
-  .message-box {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    top: 0;
-    margin: 0 auto;
-    max-width: 600px;
+  /* Main flex container for the entire chat interface */
+  .chat-container {
     display: flex;
-    flex-direction: column;
-    padding: 10px;
-    background: linear-gradient(135deg, #ece6fa, #ece6fa);
-    box-shadow: 0 0 5px rgba(0,0,0,0.3);
+    flex-direction: column; /* Stack items vertically */
+    height: 100vh; /* Takes full viewport height */
+    width: 100vw; /* Takes full viewport width */
+    background: linear-gradient(135deg, #ece6fa, #ece6fa); /* Default light gradient */
+    padding: 10px; /* Overall padding for the chat interface content */
+    box-sizing: border-box; /* Include padding in element's total width/height */
   }
 
+  /* Controls at the top (Room Code, Users, Buttons) */
   .controls {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    font-size: 0.9em;
-    margin-bottom: 8px;
+    flex-wrap: wrap; /* Allow wrapping on very small screens */
+    padding-bottom: 10px; /* Space below controls before messages start */
   }
 
+  /* Messages display area */
   .messages {
-    flex: 1;
-    overflow-y: auto;
-    background: rgba(255,255,255,0.15);
+    flex-grow: 1; /* Allows message area to take up all available vertical space */
+    overflow-y: auto; /* Enables vertical scrolling when content overflows */
+    margin: 0; /* No external margins */
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.15); /* Slightly transparent background */
     border-radius: 8px;
-    padding: 8px;
-    margin-bottom: 8px;
+    backdrop-filter: blur(4px); /* Blurred effect */
+    /* max-height will be dynamically set by JavaScript */
+    max-height: calc(100vh - 120px); /* Initial placeholder, refined by JS */
   }
 
+  /* Individual message bubble */
   .text {
-    padding: 12px;
-    margin-bottom: 8px;
-    background: rgba(0, 0, 0, 0.1);
+    background: rgba(0, 0, 0, 0.1); /* Light background for messages */
+    margin: 8px 0;
+    padding: 10px;
     border-radius: 6px;
-    word-wrap: break-word;
-    font-size: 1em;
+    animation: fadeIn 0.2s ease-in-out; /* Smooth fade-in effect */
+    font-size: 2.1em; /* Increased font size */
+    line-height: 1.4; /* Improved readability */
   }
 
-  .typing {
-    height: 1.2em;
-    font-size: 0.9em;
-    margin: 4px 0;
-    color: #333;
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 
-  .inputs {
+  /* Container for the input field and send button */
+  .inputs-container {
+    padding-top: 10px; /* Space above the input bar */
+    padding-bottom: env(safe-area-inset-bottom); /* iOS Safe Area for bottom notch/bar */
+    background: inherit; /* Inherit background from chat-container for smooth transitions */
     display: flex;
-    gap: 8px;
-    align-items: center;
-    background: #ece6fa;
-    padding: 8px;
-    border-top: 1px solid #ccc;
+    gap: 10px; /* Space between input and button */
+    align-items: center; /* Vertically align items in the input bar */
+    flex-shrink: 0; /* Prevent this container from shrinking */
   }
 
+  /* Message input field */
   #message {
-    flex: 1;
-    padding: 10px 12px;
-    border-radius: 20px;
+    flex-grow: 1; /* Allows input to take up most available width */
+    padding: 12px;
+    border-radius: 6px;
     border: none;
-    background: white;
-    font-size: 1em;
     outline: none;
+    background: rgba(255, 255, 255, 0.2);
+    color: black; /* Default text color in input */
+    font-size: 2rem;
   }
 
+  /* Send button */
   #send-btn {
-    background: #ff416c;
-    color: white;
+    padding: 12px 18px;
+    background: #ff416c; /* Bright pink/red */
     border: none;
-    border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    font-size: 1.2em;
+    border-radius: 6px;
+    color: white;
     cursor: pointer;
+    font-weight: bold;
+    flex-shrink: 0; /* Prevent button from shrinking */
   }
 
   #send-btn:hover {
-    background: #ff4b2b;
+    background: #ff4b2b; /* Slightly darker pink/red on hover */
   }
 
-  .dark-mode-toggle,
-  .leave-btn {
-    padding: 5px 8px;
-    font-size: 0.85em;
-    border-radius: 4px;
-    border: none;
+  /* Typing indicator text */
+  .typing {
+    font-size: 1.85rem;
+    color: #333;
+    padding-left: 4px;
+    margin-top: 5px; /* Small space above typing indicator */
+    min-height: 1.2em; /* Reserve space to prevent layout jumps when text appears/disappears */
+  }
+
+  /* Dark Mode Toggle and Leave buttons */
+  .dark-mode-toggle, .leave-btn {
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 1.85rem;
     cursor: pointer;
-    color: white;
   }
 
   .dark-mode-toggle {
-    background: #333;
+    background: #222; /* Dark background for toggle */
+    color: white;
   }
 
   .leave-btn {
-    background: crimson;
+    background: crimson; /* Red for leave button */
+    color: white;
   }
 
+  /* Mobile-specific adjustments */
   @media (max-width: 600px) {
-    .message-box {
-      width: 100%;
-      border-radius: 0;
+    .chat-container {
+      padding: 15px 10px; /* Slightly more padding for smaller screens */
     }
 
-    #message {
-      font-size: 1em;
-    }
-
-    .text {
-      font-size: 1em;
+    .controls {
+      flex-direction: column; /* Stack control items vertically on small screens */
+      align-items: flex-start; /* Align stacked items to the left */
+      gap: 8px; /* Space between stacked control items */
     }
   }
 </style>
 
-<div class="message-box">
+<div class="chat-container">
   <div class="controls">
-    <div><strong>Room Code:</strong> {{code}} | <strong>Users:</strong> <span id="user-count">1</span></div>
     <div>
-      <button class="dark-mode-toggle" onclick="toggleDarkMode()">🌓</button>
-      <button class="leave-btn" onclick="leaveRoom()">🚪</button>
+      <strong>Room Code:</strong> {{ code }} |
+      <strong>Users:</strong> <span id="user-count">1</span>
+    </div>
+    <div>
+      <button class="dark-mode-toggle" onclick="toggleDarkMode()">🌓 Toggle Dark</button>
+      <button class="leave-btn" onclick="leaveRoom()">🚪 Leave</button>
     </div>
   </div>
 
   <div class="messages" id="messages"></div>
   <div class="typing" id="typing-indicator"></div>
 
-  <div class="inputs" id="input-wrapper">
-    <input type="text" placeholder="Type a message" id="message" onkeypress="handleKeyPress(event)" oninput="notifyTyping()" />
-    <button id="send-btn" onclick="sendMessage()">➤</button>
+  <div class="inputs-container">
+    <input type="text" placeholder="Message" id="message" onkeypress="handleKeyPress(event)" oninput="notifyTyping()" />
+    <button id="send-btn" onClick="sendMessage()">Send</button>
   </div>
 </div>
 
@@ -149,25 +167,31 @@
   const messages = document.getElementById("messages");
   const messageInput = document.getElementById("message");
   const typingIndicator = document.getElementById("typing-indicator");
-  const mode = "{{ mode }}";
+  const chatContainer = document.querySelector('.chat-container');
+  const controls = document.querySelector('.controls');
+  const inputsContainer = document.querySelector('.inputs-container');
+  const mode = "{{ mode }}"; // Injected by Flask (privacy/fullchat)
 
   let typingTimeout;
 
+  // Function to create and append message elements
   const createMessage = (name, msg, isPrivate = false) => {
     const content = document.createElement("div");
     content.classList.add("text");
+    // Removed timestamp span here
     content.innerHTML = `
-      <strong>${name}</strong>${isPrivate ? " (private)" : ""}: ${msg}<br>
-      <small style="opacity: 0.6;">${new Date().toLocaleString()}</small>
+      <span><strong>${name}</strong>: ${msg}</span>
     `;
     messages.appendChild(content);
-    messages.scrollTop = messages.scrollHeight;
+    messages.scrollTop = messages.scrollHeight; // Auto-scroll to bottom
 
+    // Auto-delete oldest messages if in privacy mode and limit exceeded
     if (mode === "privacy" && messages.children.length > 5) {
       messages.removeChild(messages.firstChild);
     }
   };
 
+  // Socket.IO event listeners
   socketio.on("message", data => {
     createMessage(data.name, data.message, data.private);
   });
@@ -179,50 +203,92 @@
   socketio.on("typing", data => {
     typingIndicator.innerText = `${data.name} is typing...`;
     clearTimeout(typingTimeout);
-    typingTimeout = setTimeout(() => typingIndicator.innerText = "", 1500);
+    typingTimeout = setTimeout(() => typingIndicator.innerText = "", 1500); // Clear after 1.5 seconds
   });
 
+  // User interaction functions
   const sendMessage = () => {
     const msg = messageInput.value.trim();
-    if (msg === "") return;
+    if (msg === "") return; // Don't send empty messages
     socketio.emit("message", { data: msg });
-    messageInput.value = "";
+    messageInput.value = ""; // Clear input field
   };
 
   const handleKeyPress = event => {
-    if (event.key === "Enter") sendMessage();
+    if (event.key === "Enter") sendMessage(); // Send on Enter key
   };
 
   const notifyTyping = () => {
-    socketio.emit("typing");
+    socketio.emit("typing"); // Notify server when user types
   };
 
+  // Toggle Dark/Light Mode
   const toggleDarkMode = () => {
-    const isDark = document.body.style.getPropertyValue("--bg-color") === "black";
-    document.body.style.setProperty("--bg-color", isDark ? "skyblue" : "black");
-    document.body.style.setProperty("--text-color", isDark ? "black" : "white");
+    const body = document.body;
+    const isDark = body.style.getPropertyValue("--bg-color") === "black";
+
+    // Set body background and text color
+    body.style.setProperty("--bg-color", isDark ? "#ece6fa" : "black");
+    body.style.setProperty("--text-color", isDark ? "black" : "white");
+
+    // Adjust chat container and input container backgrounds
+    const chatBgLight = "linear-gradient(135deg, #ece6fa, #ece6fa)";
+    const chatBgDark = "linear-gradient(135deg, #222, #333)";
+
+    document.querySelector('.chat-container').style.background = isDark ? chatBgLight : chatBgDark;
+    document.querySelector('.inputs-container').style.background = isDark ? chatBgLight : chatBgDark;
+
+    // Adjust input text color for readability in dark mode
+    messageInput.style.color = isDark ? 'black' : 'white';
   };
 
   const leaveRoom = () => {
     socketio.emit("leave_room");
-    window.location.href = "/";
+    window.location.href = "/"; // Redirect to home page
   };
 
-  // ✅ WhatsApp-style: Keep input above keyboard
-  window.addEventListener("resize", () => {
-    messages.scrollTop = messages.scrollHeight;
-  });
+  // --- Mobile Keyboard Alignment Logic ---
+  const adjustLayoutForKeyboard = () => {
+    // Get the current visual viewport height (which shrinks when keyboard is open)
+    const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
 
-  window.addEventListener("focusin", () => {
-    setTimeout(() => {
-      messages.scrollTop = messages.scrollHeight;
-    }, 300); // Wait for keyboard animation
-  });
+    // Calculate heights of fixed/known elements
+    const controlsHeight = controls.offsetHeight;
+    const inputsHeight = inputsContainer.offsetHeight;
+    const typingIndicatorHeight = typingIndicator.offsetHeight; // Get current height, or set a minimum if needed
+    const chatContainerPaddingTop = parseFloat(getComputedStyle(chatContainer).paddingTop);
+    const chatContainerPaddingBottom = parseFloat(getComputedStyle(chatContainer).paddingBottom);
+    const totalContainerPadding = chatContainerPaddingTop + chatContainerPaddingBottom;
+
+    // Calculate available height for messages
+    const messagesAvailableHeight = viewportHeight - controlsHeight - inputsHeight - typingIndicatorHeight - totalContainerPadding;
+
+    // Set max-height of messages area to fit available space
+    messages.style.maxHeight = `${messagesAvailableHeight}px`;
+
+    // Ensure scroll to bottom after layout adjustment
+    messages.scrollTop = messages.scrollHeight;
+  };
+
+  // Listen for visual viewport resize (this fires reliably on keyboard show/hide)
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', adjustLayoutForKeyboard);
+  } else {
+    // Fallback for browsers that don't support visualViewport (less precise, often fires on scroll)
+    window.addEventListener('resize', adjustLayoutForKeyboard);
+  }
+
+  // Initial layout adjustment on page load
+  window.addEventListener('load', adjustLayoutForKeyboard);
+  messageInput.addEventListener('focus', adjustLayoutForKeyboard); // Re-adjust when input is focused
+  messageInput.addEventListener('blur', adjustLayoutForKeyboard);  // Re-adjust when input loses focus
+
 </script>
 
 {% for msg in messages %}
 <script type="text/javascript">
-  createMessage("{{msg.name}}", "{{msg.message}}", {{msg.private|default(false)|tojson}});
+  // Populate initial messages when the page loads
+  createMessage("{{ msg.name }}", "{{ msg.message }}", {{ msg.private|default(false)|tojson }});
 </script>
 {% endfor %}
 {% endblock %}
