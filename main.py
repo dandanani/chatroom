@@ -1,37 +1,76 @@
+# main.py
+
+# 1. IMMEDIATE MONKEY PATCHING
 import eventlet
 
-eventlet.monkey_patch()
+eventlet.monkey_patch()  # This MUST be the very first thing after importing eventlet
+
+# 2. THEN, all other imports
+import os
+import random
+import time
+import logging
+from collections import defaultdict
+from string import ascii_uppercase, digits
+
 from flask import Flask, render_template, request, session, redirect, url_for
 from flask_socketio import join_room, leave_room, send, SocketIO, emit
-import random
-from string import ascii_uppercase
+from markupsafe import escape
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
+# --- Flask App Configuration ---
 app = Flask(__name__)
-app.config["SECRET_KEY"] = "hjhjsdahhds"
-socketio = SocketIO(app)
 
+# Load SECRET_KEY from environment variable for production.
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY",
+                                          "a_very_long_and_random_string_for_dev_only_replace_this_in_prod")
+
+# Security headers for session cookies
+app.config["SESSION_COOKIE_SECURE"] = True
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = 'Lax'
+
+# --- Socket.IO Configuration ---
+socketio = SocketIO(app, cors_allowed_origins="*", manage_session=False)
+
+# --- Rate Limiting Configuration ---
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["200 per day", "50 per hour"],
+    storage_uri="memory://"
+)
+
+last_message_time = defaultdict(lambda: 0)
+MESSAGE_COOLDOWN = 0.5
+
+# --- Logging Configuration ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# --- Global Data Stores ---
 rooms = {}
-MAX_MESSAGES = 1000  # Limit number of stored messages per room
+MAX_MESSAGES = 1000
+video_calls_in_room = {}
+CHARACTER_SET = ascii_uppercase + digits
 
-# Store active video call participants in each room
-video_calls_in_room = {}  # {room_code: [sid1, sid2]}
 
-
+# --- Helper Functions ---
 def generate_unique_code(length):
-    """Generates a unique room code."""
     while True:
-        code = ""
-        for _ in range(length):
-            code += random.choice(ascii_uppercase)
+        code = "".join(random.choice(CHARACTER_SET) for _ in range(length))
         if code not in rooms:
             break
     return code
 
 
+# --- Flask Routes ---
 @app.route("/", methods=["POST", "GET"])
+@limiter.limit("10 per minute", methods=["POST"])
 def home():
-    """Handles the home page, allowing users to join or create rooms."""
     session.clear()
+
     if request.method == "POST":
         name = request.form.get("name")
         code = request.form.get("code")
@@ -39,31 +78,38 @@ def home():
         create = "create" in request.form
         mode = request.form.get("mode", "full")
 
-        if not name:
+        sanitized_name = escape(name) if name else ""
+
+        if not sanitized_name:
+            logger.warning("Attempted join/create with no name.")
             return render_template("home.html", error="Please enter a name.", code=code, name=name)
 
         if join and not code:
+            logger.warning(f"User {sanitized_name} attempted to join without a room code.")
             return render_template("home.html", error="Please enter a room code.", code=code, name=name)
 
         room = code
         if create:
-            room = generate_unique_code(4)
+            room = generate_unique_code(6)
             rooms[room] = {
                 "members": 0,
-                "sids": {},  # Store sid: name mapping for easier lookup
+                "sids": {},
                 "messages": [],
                 "mode": mode,
                 "game_active": False,
                 "player_x_sid": None,
                 "player_o_sid": None
             }
-            video_calls_in_room[room] = []  # Initialize video call tracking for new room
+            video_calls_in_room[room] = []
+            logger.info(f"Room '{room}' created by {sanitized_name}.")
         elif code not in rooms:
+            logger.warning(f"User {sanitized_name} attempted to join non-existent room '{code}'.")
             return render_template("home.html", error="Room does not exist.", code=code, name=name)
 
         session["room"] = room
-        session["name"] = name
+        session["name"] = sanitized_name
         session["mode"] = mode
+        logger.info(f"User {sanitized_name} redirecting to room {room}.")
         return redirect(url_for("room"))
 
     return render_template("home.html")
@@ -71,322 +117,323 @@ def home():
 
 @app.route("/room")
 def room():
-    """Renders the chat room page."""
     room = session.get("room")
-    if room is None or session.get("name") is None or room not in rooms:
+    name = session.get("name")
+    if room is None or name is None or room not in rooms:
+        logger.warning(f"Unauthorized access attempt to /room. Session: {session.get('room')}, {session.get('name')}")
         return redirect(url_for("home"))
 
     mode = rooms[room].get("mode", "full")
     messages = rooms[room]["messages"]
 
-    # Limit messages only when rendering in privacy mode
     if mode == "privacy":
         messages = messages[-5:]
 
+    logger.info(f"Rendering room {room} for user {name}.")
     return render_template("room.html", code=room, messages=messages, mode=mode)
 
 
+# --- Socket.IO Event Handlers ---
 @socketio.on("message")
 def message(data):
-    """Handles incoming chat messages."""
     room = session.get("room")
-    if room not in rooms:
+    name = session.get("name")
+    sid = request.sid
+
+    if not room or not name or room not in rooms:
+        logger.warning(f"Message attempt from unauthenticated/invalid session SID: {sid}")
         return
 
+    current_time = time.time()
+    if current_time - last_message_time[sid] < MESSAGE_COOLDOWN:
+        emit("error", {"message": "Please slow down! You are sending messages too fast."}, room=sid)
+        logger.warning(f"Rate limit hit for message from {name} (SID: {sid}) in room {room}.")
+        return
+    last_message_time[sid] = current_time
+
+    sanitized_message = escape(data.get("data", ""))
+
     content = {
-        "name": session.get("name"),
-        "message": data["data"]
+        "name": name,
+        "message": sanitized_message
     }
 
-    # Send message to everyone in the room
-    send(content, to=room)
-
-    # Store messages based on room mode
     mode = rooms[room].get("mode", "full")
     if mode == "privacy":
         rooms[room]["messages"].append(content)
-        if len(rooms[room]["messages"]) > 8:  # Keep a few more than client displays
+        if len(rooms[room]["messages"]) > 8:
             rooms[room]["messages"] = rooms[room]["messages"][-8:]
     else:
         rooms[room]["messages"].append(content)
         if len(rooms[room]["messages"]) > MAX_MESSAGES:
             rooms[room]["messages"] = rooms[room]["messages"][-MAX_MESSAGES:]
 
+    send(content, to=room)
+    logger.info(f"Message from {name} in room {room}: {sanitized_message}")
+
 
 @socketio.on("typing")
 def typing():
-    """Broadcasts a typing indicator to other users in the room."""
     room = session.get("room")
     name = session.get("name")
-    if room not in rooms or not name:
+    sid = request.sid
+
+    if not room or not name or room not in rooms:
         return
-    # Emit to everyone in the room except the sender
+
     emit("typing", {"name": name}, room=room, include_self=False)
 
 
 @socketio.on("connect")
 def connect(auth):
-    """Handles new client connections to a room."""
     room = session.get("room")
     name = session.get("name")
-    if not room or not name:
-        return
-    if room not in rooms:
-        leave_room(room)
-        return
+    sid = request.sid
+
+    if not room or not name or room not in rooms:
+        logger.warning(f"Connection attempt from invalid session. SID: {sid}")
+        return False
 
     join_room(room)
-    # Store SID to name mapping
-    rooms[room]["sids"][request.sid] = name
+    rooms[room]["sids"][sid] = name
 
-    # Notify others in the room that a user has joined
-    send({"name": name, "message": "has joined the room"}, to=room, include_self=False)
-    # Also send a welcome message to the joining user themselves
-    send({"name": "System", "message": f"Welcome to room {room}, {name}!"}, to=request.sid)
+    send({"name": "System", "message": f"{name} has joined the room."}, to=room, include_self=False)
+    send({"name": "System", "message": f"Welcome to room {room}, {name}!"}, to=sid)
 
     rooms[room]["members"] += 1
-    # Update user count for everyone in the room
     emit("user_count", rooms[room]["members"], to=room)
 
-    # If this is the second user joining, we can potentially enable game start
     if rooms[room]["members"] >= 2 and not rooms[room]["game_active"]:
         emit("enable_game_start", room=room)
     elif rooms[room]["game_active"]:
-        # Notify joining user that a game is active and who is playing
         player_x_name = rooms[room]["sids"].get(rooms[room]["player_x_sid"], "Player X")
         player_o_name = rooms[room]["sids"].get(rooms[room]["player_o_sid"], "Player O")
         emit("game_status", {"message": f"An XOX game is active with {player_x_name} (X) and {player_o_name} (O)."},
-             room=request.sid)
+             room=sid)
 
-    print(f"{name} joined room {room} (SID: {request.sid})")
+    logger.info(f"User {name} (SID: {sid}) connected to room {room}. Total members: {rooms[room]['members']}.")
 
 
 @socketio.on("disconnect")
 def disconnect():
-    """Handles client disconnections from a room."""
     room = session.get("room")
     name = session.get("name")
     sid = request.sid
 
     if not room or room not in rooms:
+        logger.info(f"Disconnected from invalid/non-existent room. SID: {sid}")
         return
 
     leave_room(room)
     if sid in rooms[room]["sids"]:
-        del rooms[room]["sids"][sid]  # Remove sid from mapping
+        del rooms[room]["sids"][sid]
 
     rooms[room]["members"] -= 1
 
-    # Remove user from active video call if they were part of one
     if room in video_calls_in_room:
         if sid in video_calls_in_room[room]:
-            video_calls_in_room[room].remove(sid)
-            # If a call was 1:1 and one leaves, end for the other
-            if len(video_calls_in_room[room]) == 1:
-                remaining_sid = video_calls_in_room[room][0]
-                emit("call_end", {"name": name}, room=remaining_sid)
-            video_calls_in_room[room] = []  # Reset call state for the room after a participant leaves
+            other_peer_sids_in_call = [s for s in video_calls_in_room[room] if s != sid]
+            video_calls_in_room[room] = []
 
-    # Reset game state if a player leaves
+            if other_peer_sids_in_call:
+                emit("call_end", {"name": name}, room=other_peer_sids_in_call[0])
+                logger.info(
+                    f"User {name} (SID: {sid}) disconnected, ending call for {rooms[room]['sids'].get(other_peer_sids_in_call[0], 'unknown')}.")
+            else:
+                logger.info(f"User {name} (SID: {sid}) disconnected, call ended (no other peer).")
+
     if rooms[room]["player_x_sid"] == sid or rooms[room]["player_o_sid"] == sid:
         rooms[room]["game_active"] = False
         rooms[room]["player_x_sid"] = None
         rooms[room]["player_o_sid"] = None
         emit("game_reset", {"reason": f"{name} left the game. Game reset."}, room=room)
+        logger.info(f"User {name} (SID: {sid}) disconnected, XOX game in room {room} reset.")
 
-    # Notify others in the room that a user has left
-    send({"name": name, "message": "has left the room"}, to=room)
+    send({"name": "System", "message": f"{name} has left the room."}, to=room)
 
-    # Update user count for everyone in the room
     if rooms[room]["members"] <= 0:
         del rooms[room]
         if room in video_calls_in_room:
             del video_calls_in_room[room]
+        logger.info(f"Room {room} is now empty and has been deleted.")
     else:
         emit("user_count", rooms[room]["members"], to=room)
-        # If user count drops below 2, disable game start unless a game is active with 2 players
         if rooms[room]["members"] < 2 and not rooms[room]["game_active"]:
             emit("disable_game_start", room=room)
-
-    print(f"{name} has left the room {room} (SID: {sid})")
+        logger.info(
+            f"User {name} (SID: {sid}) disconnected from room {room}. Remaining members: {rooms[room]['members']}.")
 
 
 # --- WebRTC Signaling Handlers ---
-
 @socketio.on("call_request")
 def handle_call_request():
-    """
-    Handles a request to start a video call.
-    Emits 'call_request' to an *available* peer in the room.
-    """
     room = session.get("room")
     name = session.get("name")
     requester_sid = request.sid
-    if not room or not name:
+    if not room or not name or room not in rooms:
+        logger.warning(f"Call request from invalid session. SID: {requester_sid}")
         return
 
-    # Get all SIDs currently in the room
     connected_sids = [sid for sid in rooms[room]["sids"].keys() if sid != requester_sid]
 
-    # Find a peer who is not already in a call or being called
     target_peer_sid = None
     for sid in connected_sids:
-        # Check if this SID is already part of an active call in this room
-        if not any(sid in call_sids for call_sids in video_calls_in_room.values() if
-                   room in call_sids):  # More robust check
+        is_in_any_call = False
+        for call_sids_list in video_calls_in_room.values():
+            if sid in call_sids_list:
+                is_in_any_call = True
+                break
+        if not is_in_any_call:
             target_peer_sid = sid
             break
 
     if target_peer_sid:
-        # Check if the requester is already in a call (shouldn't happen, but safety)
         if requester_sid in video_calls_in_room.get(room, []):
             emit("call_rejected", {"from": "System", "reason": "You are already in a call."}, room=requester_sid)
+            logger.warning(f"Requester {name} (SID: {requester_sid}) attempted call while already in one.")
             return
 
-        # Initialize or update the call participants for this room
         video_calls_in_room[room] = [requester_sid, target_peer_sid]
 
-        # Emit the call request to the target peer
+        target_peer_name = rooms[room]["sids"].get(target_peer_sid, "another user")
         emit("call_request", {"from": name, "requester_sid": requester_sid}, room=target_peer_sid)
-        # Inform the requester that the call request has been sent
-        emit("call_status", {"message": f"Calling {rooms[room]['sids'].get(target_peer_sid, 'another user')}..."},
-             room=requester_sid)
-        print(
-            f"{name} (SID: {requester_sid}) requested a call to {rooms[room]['sids'].get(target_peer_sid, 'unknown')} (SID: {target_peer_sid}) in room {room}")
+        emit("call_status", {"message": f"Calling {target_peer_name}..."}, room=requester_sid)
+        logger.info(
+            f"{name} (SID: {requester_sid}) requested a call to {target_peer_name} (SID: {target_peer_sid}) in room {room}.")
     else:
         emit("call_rejected", {"from": "System", "reason": "No available peer for a video call."}, room=requester_sid)
-        print(f"{name} tried to start a call in room {room} but no available peer.")
+        logger.info(f"{name} (SID: {requester_sid}) tried to start a call in room {room} but no available peer.")
 
 
 @socketio.on("call_response")
 def handle_call_response(data):
-    """
-    Handles a response (accept/reject) to a video call request.
-    `data` contains 'action' (accept/reject) and 'requester_sid'.
-    """
     room = session.get("room")
     respondent_name = session.get("name")
     respondent_sid = request.sid
     requester_sid = data.get("requester_sid")
     action = data.get("action")
 
-    if not room or not respondent_name or not requester_sid or action not in ["accept", "reject"]:
+    if not room or not respondent_name or not requester_sid or action not in ["accept", "reject"] or room not in rooms:
+        logger.warning(f"Invalid call response received. SID: {respondent_sid}, Data: {data}")
         return
 
     requester_name = rooms[room]["sids"].get(requester_sid, "Caller")
 
-    if action == "accept":
-        # Confirm call participants for server-side tracking
-        if requester_sid not in video_calls_in_room.get(room, []) or respondent_sid not in video_calls_in_room.get(room,
-                                                                                                                   []):
-            # This means the call state might have been reset or user left
-            emit("call_rejected", {"from": "System", "reason": "Call request expired or participant left."},
-                 room=respondent_sid)
-            emit("call_rejected", {"from": "System", "reason": f"{respondent_name} could not join. Try again."},
-                 room=requester_sid)
-            if room in video_calls_in_room: del video_calls_in_room[room]  # Clean up
-            return
+    expected_call_sids = sorted([requester_sid, respondent_sid])
+    current_call_sids = sorted(video_calls_in_room.get(room, []))
 
+    if expected_call_sids != current_call_sids:
+        emit("call_rejected", {"from": "System", "reason": "Call request expired or participant left."},
+             room=respondent_sid)
+        emit("call_rejected", {"from": "System", "reason": f"{respondent_name} could not join. Try again."},
+             room=requester_sid)
+        if room in video_calls_in_room: del video_calls_in_room[room]
+        logger.warning(
+            f"Call response mismatch for room {room}. Expected {expected_call_sids}, got {current_call_sids}.")
+        return
+
+    if action == "accept":
         emit("call_accepted", {"from": respondent_name, "accepted_sid": respondent_sid}, room=requester_sid)
         emit("call_status", {"message": f"You accepted the call from {requester_name}."}, room=respondent_sid)
-        print(f"{respondent_name} accepted call from {requester_name} in room {room}")
-
+        logger.info(
+            f"{respondent_name} (SID: {respondent_sid}) accepted call from {requester_name} (SID: {requester_sid}) in room {room}.")
     elif action == "reject":
         emit("call_rejected", {"from": respondent_name, "reason": "rejected your call."}, room=requester_sid)
         emit("call_status", {"message": f"You rejected the call from {requester_name}."}, room=respondent_sid)
-        # Clean up call state if rejected
-        if room in video_calls_in_room and sorted(video_calls_in_room[room]) == sorted([requester_sid, respondent_sid]):
+        if room in video_calls_in_room:
             video_calls_in_room[room] = []
-        print(f"{respondent_name} rejected call from {requester_name} in room {room}")
+        logger.info(
+            f"{respondent_name} (SID: {respondent_sid}) rejected call from {requester_name} (SID: {requester_sid}) in room {room}.")
 
 
 @socketio.on("offer")
 def handle_offer(data):
-    """Relays WebRTC SDP offer from one peer to the other."""
     room = session.get("room")
     sender_sid = request.sid
-    if not room:
+    if not room or room not in rooms:
+        logger.warning(f"Offer from invalid session. SID: {sender_sid}")
         return
 
-    # Find the other participant in the call for this room
     if room in video_calls_in_room and sender_sid in video_calls_in_room[room]:
         other_peer_sid = [sid for sid in video_calls_in_room[room] if sid != sender_sid]
         if other_peer_sid:
             emit("offer", {"offer": data["offer"]}, room=other_peer_sid[0])
-            print(
-                f"Offer from {session.get('name')} relayed in room {room} to {rooms[room]['sids'].get(other_peer_sid[0], 'unknown')}")
+            logger.info(
+                f"Offer from {session.get('name')} (SID: {sender_sid}) relayed in room {room} to {rooms[room]['sids'].get(other_peer_sid[0], 'unknown')}.")
         else:
-            print(f"Offer from {session.get('name')} in room {room} but no other peer found in call.")
+            logger.warning(
+                f"Offer from {session.get('name')} (SID: {sender_sid}) in room {room} but no other peer found in active call.")
     else:
-        print(f"Offer from {session.get('name')} in room {room} but not in an active call state.")
+        logger.warning(
+            f"Offer from {session.get('name')} (SID: {sender_sid}) in room {room} but not in an active call state.")
 
 
 @socketio.on("answer")
 def handle_answer(data):
-    """Relays WebRTC SDP answer from one peer to the other."""
     room = session.get("room")
     sender_sid = request.sid
-    if not room:
+    if not room or room not in rooms:
+        logger.warning(f"Answer from invalid session. SID: {sender_sid}")
         return
 
     if room in video_calls_in_room and sender_sid in video_calls_in_room[room]:
         other_peer_sid = [sid for sid in video_calls_in_room[room] if sid != sender_sid]
         if other_peer_sid:
             emit("answer", {"answer": data["answer"]}, room=other_peer_sid[0])
-            print(
-                f"Answer from {session.get('name')} relayed in room {room} to {rooms[room]['sids'].get(other_peer_sid[0], 'unknown')}")
+            logger.info(
+                f"Answer from {session.get('name')} (SID: {sender_sid}) relayed in room {room} to {rooms[room]['sids'].get(other_peer_sid[0], 'unknown')}.")
         else:
-            print(f"Answer from {session.get('name')} in room {room} but no other peer found in call.")
+            logger.warning(
+                f"Answer from {session.get('name')} (SID: {sender_sid}) in room {room} but no other peer found in active call.")
     else:
-        print(f"Answer from {session.get('name')} in room {room} but not in an active call state.")
+        logger.warning(
+            f"Answer from {session.get('name')} (SID: {sender_sid}) in room {room} but not in an active call state.")
 
 
 @socketio.on("ice_candidate")
 def handle_ice_candidate(data):
-    """Relays WebRTC ICE candidates between peers."""
     room = session.get("room")
     sender_sid = request.sid
-    if not room:
+    if not room or room not in rooms:
+        logger.warning(f"ICE candidate from invalid session. SID: {sender_sid}")
         return
 
     if room in video_calls_in_room and sender_sid in video_calls_in_room[room]:
         other_peer_sid = [sid for sid in video_calls_in_room[room] if sid != sender_sid]
         if other_peer_sid:
             emit("ice_candidate", {"candidate": data["candidate"]}, room=other_peer_sid[0])
-            print(
-                f"ICE candidate from {session.get('name')} relayed in room {room} to {rooms[room]['sids'].get(other_peer_sid[0], 'unknown')}")
+            logger.debug(
+                f"ICE candidate from {session.get('name')} (SID: {sender_sid}) relayed in room {room} to {rooms[room]['sids'].get(other_peer_sid[0], 'unknown')}.")
         else:
-            print(f"ICE candidate from {session.get('name')} in room {room} but no other peer found in call.")
+            logger.warning(
+                f"ICE candidate from {session.get('name')} (SID: {sender_sid}) in room {room} but no other peer found in active call.")
     else:
-        print(f"ICE candidate from {session.get('name')} in room {room} but not in an active call state.")
+        logger.warning(
+            f"ICE candidate from {session.get('name')} (SID: {sender_sid}) in room {room} but not in an active call state.")
 
 
 @socketio.on("call_end")
 def handle_call_end():
-    """
-    Handles when a user ends a video call.
-    Notifies the other peer and resets call state.
-    """
     room = session.get("room")
     name = session.get("name")
     sid = request.sid
-    if not room or not name:
+    if not room or not name or room not in rooms:
+        logger.warning(f"Call end request from invalid session. SID: {sid}")
         return
 
-    # Clear the active call participants for this room if 'sid' was part of it
     if room in video_calls_in_room and sid in video_calls_in_room[room]:
         other_peer_sids = [s for s in video_calls_in_room[room] if s != sid]
-        video_calls_in_room[room] = []  # Reset for this room
+        video_calls_in_room[room] = []
 
         if other_peer_sids:
-            # Notify the other peer in the room that the call has ended
             emit("call_end", {"name": name}, room=other_peer_sids[0])
-            print(
-                f"{name} ended the call. Notified {rooms[room]['sids'].get(other_peer_sids[0], 'unknown')} in room {room}")
+            logger.info(
+                f"User {name} (SID: {sid}) ended the call. Notified {rooms[room]['sids'].get(other_peer_sids[0], 'unknown')} in room {room}.")
         else:
-            print(f"{name} ended the call in room {room} (no other peer to notify).")
+            logger.info(f"User {name} (SID: {sid}) ended the call in room {room} (no other peer to notify).")
     else:
-        print(f"{name} tried to end a call in room {room}, but was not in an active call state.")
+        logger.warning(
+            f"User {name} (SID: {sid}) tried to end a call in room {room}, but was not in an active call state.")
 
 
 # --- XOX Game Handlers ---
@@ -396,28 +443,30 @@ def handle_game_start_request():
     name = session.get("name")
     requester_sid = request.sid
     if not room or not name or room not in rooms:
+        logger.warning(f"Game start request from invalid session. SID: {requester_sid}")
         return
 
     if rooms[room]["members"] < 2:
         emit("game_status", {"message": "Need 2 players to start XOX."}, room=requester_sid)
+        logger.info(f"Game start denied for {name} in room {room}: Not enough players.")
         return
     if rooms[room]["game_active"]:
         emit("game_status", {"message": "A game is already active. Please wait or ask players to reset."},
              room=requester_sid)
+        logger.info(f"Game start denied for {name} in room {room}: Game already active.")
         return
 
-    # Find two available players for the game.
-    # Prioritize the requester as one of the players.
     available_sids = [sid for sid in rooms[room]["sids"].keys() if sid != requester_sid]
     if not available_sids:
         emit("game_status", {"message": "No other player available to start XOX."}, room=requester_sid)
+        logger.warning(f"Game start denied for {name} in room {room}: No other players available.")
         return
 
-    # Select the other player randomly from available ones
     other_player_sid = random.choice(available_sids)
 
-    # Assign players X and O
-    player_x_sid, player_o_sid = random.sample([requester_sid, other_player_sid], 2)
+    player_sids = [requester_sid, other_player_sid]
+    random.shuffle(player_sids)
+    player_x_sid, player_o_sid = player_sids[0], player_sids[1]
 
     rooms[room]["player_x_sid"] = player_x_sid
     rooms[room]["player_o_sid"] = player_o_sid
@@ -426,15 +475,13 @@ def handle_game_start_request():
     player_x_name = rooms[room]["sids"].get(player_x_sid, "Player X")
     player_o_name = rooms[room]["sids"].get(player_o_sid, "Player O")
 
-    # Inform player X
     emit("game_start", {
         "player_x_name": player_x_name,
         "player_o_name": player_o_name,
         "your_symbol": "X",
-        "is_your_turn": True  # X starts
+        "is_your_turn": True
     }, room=player_x_sid)
 
-    # Inform player O
     emit("game_start", {
         "player_x_name": player_x_name,
         "player_o_name": player_o_name,
@@ -442,13 +489,12 @@ def handle_game_start_request():
         "is_your_turn": False
     }, room=player_o_sid)
 
-    # Inform all other users (spectators) in the room
     spectator_sids = [sid for sid in rooms[room]["sids"].keys() if sid not in [player_x_sid, player_o_sid]]
     for sid in spectator_sids:
         emit("game_status", {"message": f"XOX game started! {player_x_name} (X) vs {player_o_name} (O)."}, room=sid)
 
-    # Send a general chat message about the game starting
     send({"name": "System", "message": f"XOX game started! {player_x_name} (X) vs {player_o_name} (O)."}, to=room)
+    logger.info(f"XOX game started in room {room} between {player_x_name} (X) and {player_o_name} (O).")
 
 
 @socketio.on("game_move")
@@ -457,47 +503,54 @@ def handle_game_move(data):
     name = session.get("name")
     sid = request.sid
     if not room or not name or room not in rooms:
+        logger.warning(f"Game move from invalid session. SID: {sid}")
         return
 
     if not rooms[room]["game_active"]:
         emit("game_status", {"message": "Game not active."}, room=sid)
+        logger.warning(f"Game move denied for {name} in room {room}: Game not active.")
         return
 
-    # Verify it's the current player's turn
-    expected_symbol = "X" if sid == rooms[room]["player_x_sid"] else "O"
+    expected_symbol = None
+    if sid == rooms[room]["player_x_sid"]:
+        expected_symbol = "X"
+    elif sid == rooms[room]["player_o_sid"]:
+        expected_symbol = "O"
+
     if data["symbol"] != expected_symbol:
-        emit("game_status", {"message": "It's not your turn or you are not an active player."}, room=sid)
+        emit("game_status", {"message": "It's not your turn or you are not an active player in this game."}, room=sid)
+        logger.warning(f"Game move denied for {name} (SID: {sid}) in room {room}: Invalid turn or not player.")
         return
 
-    # Basic server-side validation: check if index is valid and cell is empty
-    index = data["index"]
-    board_state = data["board_state"]  # Trust client for simplicity but could validate here
-
-    if not (0 <= index < 9) or board_state[index] != data["symbol"]:  # Check if client's move is valid on their state
-        emit("game_status", {"message": "Invalid move received."}, room=sid)
+    index = data.get("index")
+    symbol = data.get("symbol")
+    if not isinstance(index, int) or not (0 <= index < 9) or symbol not in ['X', 'O']:
+        emit("game_status", {"message": "Invalid move data received."}, room=sid)
+        logger.warning(f"Game move denied for {name} (SID: {sid}) in room {room}: Invalid move data {data}.")
         return
 
-    # Relays the move to all players in the room
-    # We now also send who's turn it is next so clients can update correctly
-    next_turn_sid = rooms[room]["player_x_sid"] if data["next_turn_symbol"] == "X" else rooms[room]["player_o_sid"]
+    next_turn_symbol = "X" if symbol == "O" else "O"
+    next_turn_sid = rooms[room]["player_x_sid"] if next_turn_symbol == "X" else rooms[room]["player_o_sid"]
 
     emit("game_update", {
-        "index": data["index"],
-        "symbol": data["symbol"],
-        "next_turn_symbol": data["next_turn_symbol"],
+        "index": index,
+        "symbol": symbol,
+        "next_turn_symbol": next_turn_symbol,
         "player_name": name,
         "board_state": data["board_state"],
-        "current_turn_sid": next_turn_sid  # Pass the SID of the player whose turn it is next
+        "current_turn_sid": next_turn_sid
     }, room=room)
+    logger.info(f"Game move from {name} (SID: {sid}) in room {room}: index {index}, symbol {symbol}.")
 
 
 @socketio.on("game_over")
 def handle_game_over(data):
     room = session.get("room")
+    sid = request.sid
     if not room or room not in rooms:
+        logger.warning(f"Game over request from invalid session. SID: {sid}")
         return
 
-    # Ensure the game state is reset on the server
     rooms[room]["game_active"] = False
     rooms[room]["player_x_sid"] = None
     rooms[room]["player_o_sid"] = None
@@ -507,28 +560,34 @@ def handle_game_over(data):
         "draw": data.get("draw"),
         "message": data["message"]
     }, room=room)
-    # Re-enable game start for relevant users
     if rooms[room]["members"] >= 2:
         emit("enable_game_start", room=room)
+    logger.info(f"XOX game ended in room {room}. Result: {data.get('message')}.")
 
 
 @socketio.on("game_reset_request")
 def handle_game_reset_request():
     room = session.get("room")
     name = session.get("name")
+    sid = request.sid
     if not room or room not in rooms:
+        logger.warning(f"Game reset request from invalid session. SID: {sid}")
         return
 
-    # Reset game state
     rooms[room]["game_active"] = False
     rooms[room]["player_x_sid"] = None
     rooms[room]["player_o_sid"] = None
 
     emit("game_reset", {"reason": f"{name} requested a new game."}, room=room)
-    # After reset, enable game start if there are enough members
     if rooms[room]["members"] >= 2:
         emit("enable_game_start", room=room)
+    logger.info(f"XOX game in room {room} reset by {name}.")
 
 
+# --- Main execution block ---
 if __name__ == "__main__":
+    # For production, replace debug=True with debug=False and rely on a WSGI server like Gunicorn.
+    # The allow_unsafe_werkzeug=True is also for development to avoid issues with Werkzeug's reloader.
+    # For Render, you'll typically use Gunicorn via the Procfile, so these specific run arguments
+    # are less relevant for deployment but crucial for local testing.
     socketio.run(app, debug=True, host='0.0.0.0', allow_unsafe_werkzeug=True)
