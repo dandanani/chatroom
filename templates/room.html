@@ -95,7 +95,6 @@
     background: rgba(255, 255, 255, 0.15); /* Slightly transparent background */
     border-radius: 8px;
     backdrop-filter: blur(4px); /* Blurred effect */
-    /* max-height will be dynamically set by JavaScript */
     max-height: calc(100vh - 120px); /* Initial placeholder, refined by JS */
   }
 
@@ -106,7 +105,7 @@
     padding: 10px;
     border-radius: 6px;
     animation: fadeIn 0.2s ease-in-out; /* Smooth fade-in effect */
-    font-size: 2.1em; /* Increased font size */
+    font-size: 1.1em; /* Adjusted font size */
     line-height: 1.4; /* Improved readability */
   }
 
@@ -135,7 +134,7 @@
     outline: none;
     background: rgba(255, 255, 255, 0.2);
     color: black; /* Default text color in input */
-    font-size: 2rem;
+    font-size: 1rem; /* Adjusted font size */
   }
 
   /* Send button */
@@ -156,7 +155,7 @@
 
   /* Typing indicator text */
   .typing {
-    font-size: 1.85rem;
+    font-size: 0.9em; /* Adjusted font size */
     color: #333;
     padding-left: 4px;
     margin-top: 5px; /* Small space above typing indicator */
@@ -167,7 +166,7 @@
   .dark-mode-toggle, .leave-btn, .video-call-btn, .xox-game-btn {
     padding: 8px 12px;
     border-radius: 5px;
-    font-size: 1.85rem;
+    font-size: 1em; /* Adjusted font size */
     cursor: pointer;
     border: none;
     box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
@@ -269,7 +268,7 @@
   }
 
   #xox-status {
-      font-size: 1.8em;
+      font-size: 1.1em; /* Adjusted font size */
       margin-bottom: 10px;
       font-weight: bold;
       color: var(--text-color, black);
@@ -277,7 +276,7 @@
 
   #xox-start-btn, #xox-reset-btn {
       padding: 10px 15px;
-      font-size: 1.6em;
+      font-size: 1em; /* Adjusted font size */
       border-radius: 5px;
       border: none;
       cursor: pointer;
@@ -398,10 +397,10 @@
       <strong>Users:</strong> <span id="user-count">1</span>
     </div>
     <div>
-      <button class="video-call-btn" id="video-call-btn" onclick="toggleVideoCall()">到 Start Video Call</button>
+      <button class="video-call-btn" id="video-call-btn" onclick="toggleVideoCall()">📞 Start Video Call</button>
       <button class="xox-game-btn" id="xox-game-btn" onclick="toggleXOXVisibility()" disabled>Play XOX</button>
-      <button class="dark-mode-toggle" onclick="toggleDarkMode()">兼 Toggle Dark</button>
-      <button class="leave-btn" onclick="leaveRoom()">坎 Leave</button>
+      <button class="dark-mode-toggle" onclick="toggleDarkMode()">💡 Toggle Dark</button>
+      <button class="leave-btn" onclick="leaveRoom()">🚪 Leave</button>
     </div>
   </div>
 
@@ -474,6 +473,7 @@
   let peerConnection;
   let isCalling = false; // Flag to indicate if a call is active or being initiated
   let isInitiator = false; // Flag to determine who creates the offer
+  let remoteRequesterSid = null; // Store the SID of the person who initiated the call to you
 
   // STUN servers (publicly available)
   const iceServers = {
@@ -522,10 +522,9 @@
 
 
   // Function to create and append message elements
-  const createMessage = (name, msg, isPrivate = false) => {
+  const createMessage = (name, msg) => { // Removed isPrivate as it's not used
     const content = document.createElement("div");
     content.classList.add("text");
-    // Removed timestamp span here
     content.innerHTML = `
       <span><strong>${name}</strong>: ${msg}</span>
     `;
@@ -540,20 +539,21 @@
 
   // Socket.IO event listeners
   socketio.on("message", data => {
-    createMessage(data.name, data.message, data.private);
+    createMessage(data.name, data.message);
   });
 
   socketio.on("user_count", count => {
     document.getElementById("user-count").innerText = count;
-    // Enable/disable XOX game button based on user count
     const xoxGameBtn = document.getElementById('xox-game-btn');
     if (count >= 2) {
         xoxGameBtn.disabled = false;
     } else {
         xoxGameBtn.disabled = true;
-        // Optionally hide game if not enough players and game isn't active
-        if (!isXOXActive) {
-            document.getElementById('xox-game-container').classList.remove('active');
+        // If less than 2 users and no game is active, hide the game container
+        if (!gameActive) {
+            xoxGameContainer.classList.remove('active');
+            isXOXVisible = false;
+            document.getElementById('xox-game-btn').innerText = 'Play XOX';
         }
     }
   });
@@ -569,42 +569,72 @@
     // Only respond if not already in a call or initiating one
     if (isCalling) {
       console.log("Already in a call, rejecting incoming call.");
-      socketio.emit("call_rejected", { from: data.from }); // Notify caller of rejection
+      socketio.emit("call_response", { action: "reject", requester_sid: data.requester_sid }); // Notify caller of rejection
       return;
     }
+    remoteRequesterSid = data.requester_sid; // Store the SID of the caller
 
     showMessageBox(`${data.from} is calling you. Do you want to accept?`, 'confirm',
       async () => {
         isInitiator = false; // The recipient is not the initiator of the offer
-        await startVideoCallInternal();
-        // Send answer after setting up local stream and peer connection
-        await createAnswer();
-        isCalling = true;
+        isCalling = true; // Mark as calling before trying to start stream
         videoCallBtn.innerText = "Hang Up";
         videoCallBtn.classList.add("hangup");
-        createMessage("System", `You accepted a call from ${data.from}.`);
+        videoCallBtn.disabled = true; // Disable until connection established or rejected
+
+        const setupSuccess = await startVideoCallInternal();
+        if (setupSuccess) {
+          socketio.emit("call_response", { action: "accept", requester_sid: remoteRequesterSid });
+          await createAnswer();
+          createMessage("System", `You accepted a call from ${data.from}.`);
+          videoCallBtn.disabled = false; // Re-enable once call is accepted and potentially connected
+        } else {
+          socketio.emit("call_response", { action: "reject", requester_sid: remoteRequesterSid });
+          createMessage("System", "Could not start video call. Check permissions/devices.");
+          endVideoCall(); // Clean up if start failed
+        }
       },
       () => {
-        socketio.emit("call_rejected", { from: data.from });
+        socketio.emit("call_response", { action: "reject", requester_sid: remoteRequesterSid });
         createMessage("System", `You rejected a call from ${data.from}.`);
+        remoteRequesterSid = null; // Clear the requester SID
       }
     );
   });
 
+  socketio.on("call_accepted", async (data) => {
+      isCalling = true;
+      videoCallBtn.innerText = "Hang Up";
+      videoCallBtn.classList.add("hangup");
+      videoCallBtn.disabled = false; // Re-enable after acceptance
+      createMessage("System", `${data.from} accepted your call.`);
+      await createOffer(); // Initiator creates offer after acceptance
+  });
+
   socketio.on("call_rejected", (data) => {
-    showMessageBox(`${data.from} rejected your call.`, 'alert');
+    showMessageBox(`${data.from} ${data.reason}`, 'alert');
     endVideoCall(); // Clean up if call was initiated but rejected
   });
 
+  socketio.on("call_status", (data) => {
+      createMessage("System", data.message);
+  });
+
+
   socketio.on("offer", async (data) => {
+    // Ensure peerConnection is ready before setting remote description
     if (!peerConnection) {
-      // This can happen if the offer arrives before the recipient has fully set up
-      // In a real app, you might queue this or handle it more robustly.
-      console.warn("Offer received but peerConnection not ready. Setting up now.");
-      await startVideoCallInternal(); // Ensure peerConnection is initialized
+        console.warn("Offer received but peerConnection not ready. Delaying or re-initializing.");
+        // This scenario should be rare with the new call_request/response flow
+        // but if it happens, ensure local setup is complete.
+        const setupSuccess = await startVideoCallInternal();
+        if (!setupSuccess) {
+            console.error("Failed to setup peer connection on offer receive.");
+            return;
+        }
     }
     await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-    // If we are not the initiator, we need to create an answer
+    // If we are not the initiator (i.e., we received the offer), we need to create an answer
     if (!isInitiator) {
       await createAnswer();
     }
@@ -616,7 +646,9 @@
 
   socketio.on("ice_candidate", async (data) => {
     try {
-      await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+      if (peerConnection && data.candidate) {
+        await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+      }
     } catch (e) {
       console.error("Error adding received ICE candidate:", e);
     }
@@ -656,19 +688,22 @@
         if (remoteVideo.srcObject !== event.streams[0]) {
           remoteVideo.srcObject = event.streams[0];
           remoteVideoWrapper.classList.add('active'); // Show remote video
-          createMessage("System", "Video call connected!");
+          // createMessage("System", "Video call connected!"); // This can be removed or refined
         }
       };
 
       peerConnection.onconnectionstatechange = (event) => {
         console.log('PeerConnection state change:', peerConnection.connectionState);
         if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
-          if (isCalling) { // Only end call if it was active
-            endVideoCall();
-            createMessage("System", "Video call disconnected due to network issues or peer leaving.");
+          if (isCalling) {
+            // Only consider call ended if it was active and not manually hung up
+            if (videoCallBtn.innerText !== "📞 Start Video Call") { // Check if it's not already reset
+                endVideoCall();
+                createMessage("System", "Video call disconnected due to network issues or peer leaving.");
+            }
           }
         } else if (peerConnection.connectionState === 'connected') {
-          // Call is fully established
+          createMessage("System", "Video call connected!");
         }
       };
 
@@ -687,17 +722,14 @@
       let errorMessage = "Could not start video call. ";
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
         errorMessage += "Please grant camera and microphone permissions in your browser settings.";
-        videoCallBtn.innerText = "圻 Permissions Denied";
-        videoCallBtn.disabled = true; // Disable the button permanently until page refresh
       } else if (error.name === 'NotFoundError') {
         errorMessage += "No camera or microphone found. Please ensure devices are connected.";
-        videoCallBtn.innerText = "圻 No Devices Found";
-        videoCallBtn.disabled = true;
       } else {
-        // For unexpected errors, display the error name and message for debugging
         errorMessage += `An unexpected error occurred: ${error.name} - ${error.message}`;
       }
       showMessageBox(errorMessage, 'alert');
+      videoCallBtn.disabled = true; // Disable button after a persistent error
+      videoCallBtn.innerText = "Error!";
       return false; // Indicate failure
     }
   };
@@ -737,9 +769,10 @@
     remoteVideoWrapper.classList.remove('active');
     isCalling = false;
     isInitiator = false;
-    videoCallBtn.innerText = "到 Start Video Call";
+    remoteRequesterSid = null; // Clear this on call end
+    videoCallBtn.innerText = "📞 Start Video Call";
     videoCallBtn.classList.remove("hangup");
-    videoCallBtn.disabled = false; // Re-enable button if it was disabled by a temporary error
+    videoCallBtn.disabled = false; // Re-enable button
   };
 
   // --- User Interaction Functions ---
@@ -759,12 +792,18 @@
   };
 
   const toggleVideoCall = async () => {
-    if (videoCallBtn.disabled) {
+    if (videoCallBtn.disabled && videoCallBtn.innerText !== "Calling...") { // Allow re-clicks if "Calling..."
       showMessageBox("Video call is unavailable. Please check camera/microphone permissions or device connection.", 'alert');
-      return; // Do nothing if the button is disabled
+      return;
     }
 
     if (!isCalling) {
+      const userCount = parseInt(document.getElementById("user-count").innerText);
+      if (userCount < 2) {
+        showMessageBox("Need at least 2 users in the room for a video call.", 'alert');
+        return;
+      }
+
       // Initiate a new call
       isInitiator = true;
       videoCallBtn.innerText = "Calling...";
@@ -776,18 +815,18 @@
         // If setup failed (e.g., permissions denied), end the process
         isCalling = false; // Ensure isCalling is false
         isInitiator = false;
-        videoCallBtn.innerText = "到 Start Video Call"; // Reset button text
+        videoCallBtn.innerText = "📞 Start Video Call"; // Reset button text
         videoCallBtn.classList.remove("hangup");
-        // Button might remain disabled if permission was denied
+        // Button might remain disabled if permission was denied due to error in startVideoCallInternal
         return;
       }
 
       isCalling = true; // Mark as calling only if setup was successful
       socketio.emit("call_request"); // Notify other user in the room
-      createMessage("System", "Initiating video call...");
 
       // Set a timeout to automatically end the call if no answer
       setTimeout(() => {
+        // Check if the call is still in the 'calling' state (isInitiator, isCalling, no remote description yet)
         if (isCalling && isInitiator && peerConnection && !peerConnection.remoteDescription) {
           showMessageBox("No one answered your call.", 'alert');
           socketio.emit("call_end"); // Inform the server to clean up
@@ -798,7 +837,6 @@
       // End the current call
       socketio.emit("call_end"); // Notify the other peer and server
       endVideoCall();
-      createMessage("System", "You ended the video call.");
     }
   };
 
@@ -841,7 +879,8 @@
   let board = ['', '', '', '', '', '', '', '', ''];
   let currentPlayer = 'X'; // 'X' always starts
   let gameActive = false;
-  let yourSymbol = null; // 'X' or 'O' for the current client
+  let yourSymbol = null; // 'X' or 'O' for the current client (if playing)
+  let isYourTurn = false; // Flag for current client's turn
   let playerXName = '';
   let playerOName = '';
   let isXOXVisible = false;
@@ -857,6 +896,8 @@
       if (isXOXVisible) {
           xoxGameContainer.classList.add('active');
           document.getElementById('xox-game-btn').innerText = 'Hide XOX';
+          // Ensure board state is correct when shown
+          updateGameStatus();
           adjustLayoutForKeyboard(); // Readjust layout when game becomes visible
       } else {
           xoxGameContainer.classList.remove('active');
@@ -870,13 +911,22 @@
       xoxCells.forEach(cell => {
           cell.innerText = '';
           cell.classList.remove('x', 'o', 'winning-cell');
-          cell.addEventListener('click', handleCellClick, { once: true }); // Ensure one click per cell
+          cell.style.pointerEvents = 'none'; // Disable clicks initially
+          // Re-add event listener if it was removed by { once: true }
+          cell.removeEventListener('click', handleCellClick); // Remove existing to prevent duplicates
+          cell.addEventListener('click', handleCellClick);
       });
       gameActive = false;
-      xoxStatus.innerText = 'Waiting for players to start game...';
+      yourSymbol = null;
+      isYourTurn = false;
+      playerXName = '';
+      playerOName = '';
+      xoxStatus.innerText = 'Need 2 players to start XOX.'; // Default status
       xoxStartBtn.style.display = 'block';
       xoxResetBtn.style.display = 'none';
-      currentPlayer = 'X'; // Reset current player to X for next game
+      currentPlayer = 'X'; // Reset current player for next game
+      // Disable start button until socketio.on("enable_game_start")
+      xoxStartBtn.disabled = true;
   };
 
   const checkWinner = () => {
@@ -901,11 +951,12 @@
       if (roundWon) {
           gameActive = false;
           highlightWinningCells(winningCells);
-          const winnerName = currentPlayer === 'X' ? playerOName : playerXName; // Previous player was the winner
-          xoxStatus.innerText = `${winnerName} (${currentPlayer === 'X' ? 'O' : 'X'}) has won!`;
-          socketio.emit("game_over", { winner: (currentPlayer === 'X' ? 'O' : 'X'), draw: false, message: `${winnerName} won the XOX game!` });
+          const winnerDisplay = board[winningCells[0]] === 'X' ? playerXName : playerOName;
+          const winnerSymbol = board[winningCells[0]];
+          xoxStatus.innerText = `${winnerDisplay} (${winnerSymbol}) has won!`;
+          socketio.emit("game_over", { winner: winnerSymbol, draw: false, message: `${winnerDisplay} won the XOX game!` });
           xoxStartBtn.style.display = 'none';
-          xoxResetBtn.style.display = 'block'; // Show reset button after game over
+          xoxResetBtn.style.display = 'block';
           return true;
       }
 
@@ -914,7 +965,7 @@
           xoxStatus.innerText = 'Game Draw!';
           socketio.emit("game_over", { winner: null, draw: true, message: "XOX game ended in a draw!" });
           xoxStartBtn.style.display = 'none';
-          xoxResetBtn.style.display = 'block'; // Show reset button after game over
+          xoxResetBtn.style.display = 'block';
           return true;
       }
       return false;
@@ -930,50 +981,53 @@
       const clickedCell = event.target;
       const clickedCellIndex = parseInt(clickedCell.dataset.index);
 
-      if (!gameActive || board[clickedCellIndex] !== '' || yourSymbol !== currentPlayer) {
-          return; // Do nothing if game is not active, cell is already filled, or not your turn
+      if (!gameActive || board[clickedCellIndex] !== '' || !isYourTurn) {
+          // console.log("Can't click: Game not active, cell filled, or not your turn.");
+          return;
       }
 
-      // Update board and display locally immediately for responsiveness
-      board[clickedCellIndex] = currentPlayer;
-      clickedCell.innerText = currentPlayer;
-      clickedCell.classList.add(currentPlayer.toLowerCase());
-      clickedCell.removeEventListener('click', handleCellClick); // Prevent further clicks on this cell
+      // Local update immediately for responsiveness
+      board[clickedCellIndex] = yourSymbol;
+      clickedCell.innerText = yourSymbol;
+      clickedCell.classList.add(yourSymbol.toLowerCase());
+      clickedCell.style.pointerEvents = 'none'; // Disable click on this cell
 
-      // Determine next player and emit move to server
-      const nextPlayerSymbol = currentPlayer === 'X' ? 'O' : 'X';
+      // Calculate next turn symbol
+      const nextPlayerSymbol = yourSymbol === 'X' ? 'O' : 'X';
+
+      // Emit move to server
       socketio.emit("game_move", {
           index: clickedCellIndex,
-          symbol: currentPlayer,
+          symbol: yourSymbol,
           next_turn_symbol: nextPlayerSymbol,
-          board_state: board
+          board_state: board // Send current board state for server validation
       });
+
+      isYourTurn = false; // It's no longer your turn
+      updateGameStatus(); // Update status locally immediately
   };
 
   // --- Socket.IO Game Event Handlers ---
 
   socketio.on("enable_game_start", () => {
       const userCount = parseInt(document.getElementById("user-count").innerText);
-      if (userCount >= 2) {
+      if (userCount >= 2 && !gameActive) {
           xoxStartBtn.disabled = false;
-          xoxGameBtn.disabled = false; // Enable the main XOX button
           xoxStatus.innerText = 'Two players are in the room. Click "Start New XOX Game"!';
       }
   });
 
   socketio.on("disable_game_start", () => {
       xoxStartBtn.disabled = true;
-      if (!gameActive) { // Only update status if no game is running
+      if (!gameActive) {
           xoxStatus.innerText = 'Need 2 players to start XOX.';
       }
-      // xoxGameBtn.disabled = true; // Keep the main button enabled so user can hide/show
   });
 
   socketio.on("game_status", (data) => {
       createMessage("System", `XOX: ${data.message}`);
-      // If a game is active and this client is not one of the players, disable playing
-      if (data.message.includes("is already active")) {
-          xoxStartBtn.disabled = true;
+      if (!gameActive) { // If no game is active, update the game status on the board itself
+        xoxStatus.innerText = data.message;
       }
   });
 
@@ -981,6 +1035,7 @@
       initializeBoard(); // Reset board visual and logic
       gameActive = true;
       yourSymbol = data.your_symbol; // Assign 'X' or 'O' to this client
+      isYourTurn = data.is_your_turn; // True if X, False if O
       playerXName = data.player_x_name;
       playerOName = data.player_o_name;
 
@@ -992,26 +1047,29 @@
   });
 
   socketio.on("game_update", (data) => {
-      // Update the local board based on the received move
-      const index = data.index;
-      const symbol = data.symbol;
-      const player_name = data.player_name;
-
-      if (board[index] === '') { // Only apply if cell is empty (basic validation)
-          board[index] = symbol;
-          const cell = xoxCells[index];
-          cell.innerText = symbol;
-          cell.classList.add(symbol.toLowerCase());
-          cell.removeEventListener('click', handleCellClick); // Prevent double click
-
-          currentPlayer = data.next_turn_symbol; // Update current player for next turn
-          updateGameStatus();
-          checkWinner(); // Check for winner after every move
+      // Only update if the game is active and the move is valid for the current board state
+      if (!gameActive || board[data.index] !== '') {
+          // This should ideally not happen if server validates, but good client-side guard
+          console.warn("Received invalid game update or game not active.");
+          return;
       }
+
+      board[data.index] = data.symbol;
+      const cell = xoxCells[data.index];
+      cell.innerText = data.symbol;
+      cell.classList.add(data.symbol.toLowerCase());
+      cell.style.pointerEvents = 'none'; // Disable click on this cell
+
+      // Determine if it's THIS client's turn next
+      isYourTurn = (data.current_turn_sid === socketio.id); // Compare incoming SID to local SID
+
+      updateGameStatus();
+      checkWinner(); // Check for winner after every move
   });
 
   socketio.on("game_result", (data) => {
       gameActive = false;
+      isYourTurn = false; // Game over, no one's turn
       xoxStartBtn.style.display = 'none';
       xoxResetBtn.style.display = 'block';
       createMessage("System", `XOX Game Over: ${data.message}`);
@@ -1021,6 +1079,8 @@
           const winnerDisplayName = data.winner === 'X' ? playerXName : playerOName;
           xoxStatus.innerText = `${winnerDisplayName} (${data.winner}) has won!`;
       }
+      xoxCells.forEach(cell => cell.style.pointerEvents = 'none'); // Disable all cells
+      xoxStartBtn.disabled = false; // Re-enable start button
   });
 
   socketio.on("game_reset", (data) => {
@@ -1030,8 +1090,9 @@
       const userCount = parseInt(document.getElementById("user-count").innerText);
       if (userCount >= 2) {
           xoxStartBtn.disabled = false;
+          xoxStatus.innerText = 'Two players are in the room. Click "Start New XOX Game"!';
       } else {
-          xoxStartBtn.disabled = true;
+          xoxStatus.innerText = 'Need 2 players to start XOX.';
       }
   });
 
@@ -1052,21 +1113,20 @@
 
   const updateGameStatus = () => {
     if (!gameActive) {
-        if (xoxStatus.innerText.includes("won") || xoxStatus.innerText.includes("Draw")) {
-            // Keep winner/draw message
-        } else if (xoxStatus.innerText.includes("Waiting for players")) {
-            // Keep waiting message
-        } else {
-            xoxStatus.innerText = 'Game is not active.';
+        // If game is not active, status might be a win/draw message or "waiting for players"
+        // Don't overwrite if it's already a win/draw message
+        if (!xoxStatus.innerText.includes("won") && !xoxStatus.innerText.includes("Draw") && yourSymbol === null) {
+            const userCount = parseInt(document.getElementById("user-count").innerText);
+            xoxStatus.innerText = userCount < 2 ? 'Need 2 players to start XOX.' : 'Waiting for a new game to start.';
         }
     } else {
         const currentPlayerName = currentPlayer === 'X' ? playerXName : playerOName;
-        const yourTurnText = yourSymbol === currentPlayer ? 'Your turn!' : '';
+        const yourTurnText = isYourTurn ? 'Your turn!' : '';
         xoxStatus.innerText = `${currentPlayerName}'s turn (${currentPlayer}). ${yourTurnText}`;
     }
     // Only enable cell clicks if it's your turn and game is active
     xoxCells.forEach(cell => {
-        if (gameActive && yourSymbol === currentPlayer && cell.innerText === '') {
+        if (gameActive && isYourTurn && board[parseInt(cell.dataset.index)] === '') {
             cell.style.pointerEvents = 'auto'; // Enable click
         } else {
             cell.style.pointerEvents = 'none'; // Disable click
@@ -1085,7 +1145,8 @@
     // Calculate heights of fixed/known elements
     const controlsHeight = controls.offsetHeight;
     const inputsHeight = inputsContainer.offsetHeight;
-    const typingIndicatorHeight = typingIndicator.offsetHeight; // Get current height, or set a minimum if needed
+    // Account for typing indicator potentially being empty (min-height)
+    const typingIndicatorHeight = typingIndicator.innerText ? typingIndicator.offsetHeight : 0;
     const videoContainerHeight = document.getElementById('video-container').offsetHeight; // Height of video section
     const xoxContainerHeight = isXOXVisible ? xoxGameContainer.offsetHeight : 0; // Only add if game is visible
 
@@ -1116,10 +1177,13 @@
     adjustLayoutForKeyboard();
     // Initial check for game button state
     const userCount = parseInt(document.getElementById("user-count").innerText);
-    if (userCount >= 2) {
+    if (userCount >= 2 && !gameActive) {
         document.getElementById('xox-game-btn').disabled = false;
+        xoxStartBtn.disabled = false;
+        xoxStatus.innerText = 'Two players are in the room. Click "Start New XOX Game"!';
     } else {
         document.getElementById('xox-game-btn').disabled = true;
+        xoxStartBtn.disabled = true;
     }
   });
   messageInput.addEventListener('focus', adjustLayoutForKeyboard); // Re-adjust when input is focused
@@ -1130,7 +1194,7 @@
 {% for msg in messages %}
 <script type="text/javascript">
   // Populate initial messages when the page loads
-  createMessage("{{ msg.name }}", "{{ msg.message }}", {{ msg.private|default(false)|tojson }});
+  createMessage("{{ msg.name }}", "{{ msg.message }}");
 </script>
 {% endfor %}
 {% endblock %}
