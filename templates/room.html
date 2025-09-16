@@ -9,7 +9,7 @@
     color: var(--text-color, black);
     font-family: Arial, sans-serif;
     transition: background 0.3s, color 0.3s;
-    overflow: hidden;
+    overflow: auto;
   }
 
   /* Main flex container for the entire chat interface */
@@ -172,17 +172,63 @@
     to { opacity: 1; transform: translateY(0); }
   }
 
-  /* Container for the input field and send button */
+  /* remove margin-bottom on .inputs-container if present */
   .inputs-container {
-    padding-top: 10px;
-    padding-bottom: env(safe-area-inset-bottom);
-    margin-bottom: 30px;
-    background: inherit;
-    display: flex;
+    position: fixed;
+    left: 10px;                     /* match container padding */
+    right: 10px;                    /* match container padding */
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); /* safe area + gap */
     gap: 10px;
+    display: flex;
     align-items: center;
-    flex-shrink: 0;
+    background: transparent;
+    padding: 10px;
+    border-radius: 12px;
+    z-index: 999;
+    box-sizing: border-box;
   }
+
+  /* ensure send input sizes adapt */
+  #message { flex: 1; min-width: 0; }
+
+
+  /* add a buffer so messages are not hidden under the fixed inputs */
+  .messages {
+    padding-bottom: calc( (var(--inputs-height, 64px)) + env(safe-area-inset-bottom, 12px) );
+    /* Keep existing properties (overflow-y, etc.) */
+  }
+
+  /* Messages area: add bottom padding to avoid being covered by fixed inputs */
+.messages {
+  flex-grow: 1;
+  overflow-y: auto;
+  margin: 0;
+  padding: 10px;
+  padding-bottom: calc(var(--inputs-height, 64px) + env(safe-area-inset-bottom, 12px));
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  backdrop-filter: blur(4px);
+  max-height: calc(100vh - 120px);
+  box-sizing: border-box;
+}
+
+/* single fixed inputs container — always visible above keyboard */
+.inputs-container {
+  position: fixed;
+  left: 10px;                     /* match .chat-container padding */
+  right: 10px;                    /* match .chat-container padding */
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); /* safe area + gap */
+  gap: 10px;
+  display: flex;
+  align-items: center;
+  background: transparent;
+  padding: 10px;
+  border-radius: 12px;
+  z-index: 999;
+  box-sizing: border-box;
+}
+#message { flex: 1; min-width: 0; }
+
 
   /* Message input field */
   #message {
