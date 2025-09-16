@@ -176,6 +176,7 @@
   .inputs-container {
     padding-top: 10px;
     padding-bottom: env(safe-area-inset-bottom);
+    margin-bottom: 30px;
     background: inherit;
     display: flex;
     gap: 10px;
@@ -187,7 +188,7 @@
   #message {
     flex-grow: 1;
     padding: 12px;
-    border-radius: 6px;
+    border-radius: 60px;
     border: none;
     outline: none;
     background: rgba(255, 255, 255, 0.2);
@@ -546,9 +547,9 @@
       <span class="video-label">Them</span>
     </div>
     <div class="video-controls-overlay">
-      <button id="mute-toggle-btn" onclick="toggleMute()">🔇</button>
-      <button id="camera-switch-btn" onclick="switchCamera()">🔄</button>
-      <button id="fullscreen-toggle-btn" onclick="toggleFullscreen()"> expand_content </button>
+      <button id="mute-toggle-btn" onclick="toggleMute()">Mute 🔇</button>
+      <button id="camera-switch-btn" onclick="switchCamera()"> Reverse🔄</button>
+      <button id="fullscreen-toggle-btn" onclick="toggleFullscreen()"> expand Video 📷 </button>
     </div>
   </div>
 
@@ -1125,7 +1126,7 @@
           const audioTrack = localStream.getAudioTracks()[0];
           if (audioTrack) {
               audioTrack.enabled = !audioTrack.enabled;
-              muteToggleButton.innerText = audioTrack.enabled ? '🔇' : '🎤';
+              muteToggleButton.innerText = audioTrack.enabled ? 'Mute🔇' : 'Unmute🎤';
               muteToggleButton.classList.toggle('active', !audioTrack.enabled);
           }
       }
