@@ -1,3 +1,4 @@
+
 {% extends 'base.html' %}
 {% block content %}
 <style>
@@ -93,11 +94,16 @@
     display: block;
   }
 
+  /* video elements: do not mirror by default; apply mirror only to local video */
   .video-wrapper video {
     width: 100%;
     height: 100%;
-    object-fit: contain; /* Use 'contain' for fullscreen to see whole video */
+    object-fit: cover; /* fill area on mobile better */
     border-radius: 8px;
+  }
+
+  /* Mirror only local preview so user sees themselves naturally */
+  #local-video {
     transform: scaleX(-1);
   }
 
@@ -109,7 +115,8 @@
     color: white;
     padding: 3px 8px;
     border-radius: 4px;
-    font-size: 0.8em;
+    font-size: 0.9em;
+    font-weight: 600;
   }
 
   /* Video Controls Overlay */
@@ -121,7 +128,7 @@
     background-color: rgba(0, 0, 0, 0.6);
     border-radius: 15px;
     padding: 8px 15px;
-    display: flex;
+    display: none; /* start hidden and shown by JS when a call is active */
     gap: 10px;
     z-index: 100;
   }
@@ -130,9 +137,9 @@
     background: none;
     border: none;
     color: white;
-    font-size: 1.5em;
+    font-size: 1.1em;
     cursor: pointer;
-    padding: 5px;
+    padding: 8px;
     transition: color 0.2s ease;
   }
 
@@ -154,17 +161,19 @@
     border-radius: 8px;
     backdrop-filter: blur(4px);
     max-height: calc(100vh - 120px);
+    box-sizing: border-box;
   }
 
   /* Individual message bubble */
   .text {
     margin: 8px 0;
-    padding: 10px;
-    border-radius: 6px;
+    padding: 12px;
+    border-radius: 8px;
     animation: fadeIn 0.2s ease-in-out;
-    font-size: 1.1em;
-    line-height: 1.4;
+    font-size: 1.2em;
+    line-height: 1.5;
     color: black; /* Ensure text is black */
+    word-break: break-word;
   }
 
   @keyframes fadeIn {
@@ -181,65 +190,35 @@
     gap: 10px;
     display: flex;
     align-items: center;
-    background: transparent;
+    background: rgba(255,255,255,0.02);
     padding: 10px;
     border-radius: 12px;
     z-index: 999;
     box-sizing: border-box;
+    backdrop-filter: blur(6px);
   }
 
   /* ensure send input sizes adapt */
   #message { flex: 1; min-width: 0; }
 
-
   /* add a buffer so messages are not hidden under the fixed inputs */
   .messages {
     padding-bottom: calc( (var(--inputs-height, 64px)) + env(safe-area-inset-bottom, 12px) );
-    /* Keep existing properties (overflow-y, etc.) */
   }
 
-  /* Messages area: add bottom padding to avoid being covered by fixed inputs */
-.messages {
-  flex-grow: 1;
-  overflow-y: auto;
-  margin: 0;
-  padding: 10px;
-  padding-bottom: calc(var(--inputs-height, 64px) + env(safe-area-inset-bottom, 12px));
-  background: rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
-  backdrop-filter: blur(4px);
-  max-height: calc(100vh - 120px);
-  box-sizing: border-box;
-}
-
-/* single fixed inputs container — always visible above keyboard */
-.inputs-container {
-  position: fixed;
-  left: 10px;                     /* match .chat-container padding */
-  right: 10px;                    /* match .chat-container padding */
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); /* safe area + gap */
-  gap: 10px;
-  display: flex;
-  align-items: center;
-  background: transparent;
-  padding: 10px;
-  border-radius: 12px;
-  z-index: 999;
-  box-sizing: border-box;
-}
-#message { flex: 1; min-width: 0; }
-
+  .inputs-container.focused { box-shadow: 0 10px 30px rgba(0,0,0,0.2); transform: translateY(-6px); }
 
   /* Message input field */
   #message {
     flex-grow: 1;
-    padding: 12px;
+    padding: 14px;
     border-radius: 60px;
     border: none;
     outline: none;
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.22);
     color: black;
-    font-size: 1rem;
+    font-size: 1.05rem;
+    max-height: 48px;
   }
 
   /* Send button */
@@ -247,11 +226,13 @@
     padding: 12px 18px;
     background: #ff416c;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     color: white;
     cursor: pointer;
     font-weight: bold;
     flex-shrink: 0;
+    font-size: 1rem;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.12);
   }
 
   #send-btn:hover {
@@ -260,7 +241,7 @@
 
   /* Typing indicator text */
   .typing {
-    font-size: 0.9em;
+    font-size: 0.95em;
     color: #333;
     padding-left: 4px;
     margin-top: 5px;
@@ -270,7 +251,7 @@
   /* Dark Mode Toggle, Leave, and Video Call buttons */
   .dark-mode-toggle, .leave-btn, .video-call-btn, .xox-game-btn {
     padding: 8px 12px;
-    border-radius: 5px;
+    border-radius: 6px;
     font-size: 1em;
     cursor: pointer;
     border: none;
@@ -618,18 +599,18 @@
   </div>
   <!-- End XOX Game Section -->
 
-  <div class="messages" id="messages"></div>
-  <div class="typing" id="typing-indicator"></div>
+  <div class="messages" id="messages" aria-live="polite"></div>
+  <div class="typing" id="typing-indicator" aria-atomic="true"></div>
 
-  <div class="inputs-container">
-    <input type="text" placeholder="Message" id="message" onkeypress="handleKeyPress(event)" oninput="notifyTyping()" />
-    <button id="send-btn" onClick="sendMessage()">Send</button>
-    <div style="height: 20px;"></div>
+  <div class="inputs-container" id="inputs-container" role="region" aria-label="Message input">
+    <input type="text" placeholder="Message" id="message" onkeypress="handleKeyPress(event)" oninput="notifyTyping()" autocomplete="off" />
+    <button id="send-btn" onClick="sendMessage()" aria-label="Send message">Send</button>
+
   </div>
 </div>
 
 <!-- Custom Message Box for alerts/confirmations -->
-<div class="message-box-overlay" id="message-box-overlay">
+<div class="message-box-overlay" id="message-box-overlay" aria-hidden="true">
   <div class="message-box" id="message-box">
     <p id="message-box-text"></p>
     <div id="message-box-buttons">
@@ -640,7 +621,7 @@
 </div>
 
 <!-- User Selection Modal for Video Call -->
-<div class="user-selection-modal-overlay" id="user-selection-modal-overlay">
+<div class="user-selection-modal-overlay" id="user-selection-modal-overlay" aria-hidden="true">
   <div class="user-selection-modal">
     <h3>Select Users for Video Call</h3>
     <div class="user-selection-list" id="user-selection-list">
@@ -661,7 +642,7 @@
   const typingIndicator = document.getElementById("typing-indicator");
   const chatContainer = document.querySelector('.chat-container');
   const controls = document.querySelector('.controls');
-  const inputsContainer = document.querySelector('.inputs-container');
+  const inputsContainer = document.getElementById('inputs-container');
   const mode = "{{ mode }}"; // Injected by Flask (privacy/fullchat)
 
   const videoCallBtn = document.getElementById("video-call-btn");
@@ -687,6 +668,7 @@
 
   // Store online users for selection modal
   let onlineUsers = [];
+  let callRequestInProgress = false; // only true when user explicitly requests a call (prevents auto messages)
 
   // STUN servers (publicly available)
   const iceServers = {
@@ -716,10 +698,12 @@
       confirmBtn.innerText = 'Accept';
       confirmBtn.onclick = () => {
         overlay.classList.remove('show');
+        overlay.setAttribute('aria-hidden', 'true');
         if (onConfirm) onConfirm();
       };
       cancelBtn.onclick = () => {
         overlay.classList.remove('show');
+        overlay.setAttribute('aria-hidden', 'true');
         if (onCancel) onCancel();
       };
     } else { // 'alert' type
@@ -727,9 +711,11 @@
       confirmBtn.innerText = 'OK';
       confirmBtn.onclick = () => {
         overlay.classList.remove('show');
+        overlay.setAttribute('aria-hidden', 'true');
         if (onConfirm) onConfirm();
       };
     }
+    overlay.setAttribute('aria-hidden', 'false');
     overlay.classList.add('show');
   };
 
@@ -747,10 +733,12 @@
       userSelectionList.appendChild(label);
     });
     userSelectionModalOverlay.classList.add('show');
+    userSelectionModalOverlay.setAttribute('aria-hidden', 'false');
   };
 
   const hideUserSelectionModal = () => {
     userSelectionModalOverlay.classList.remove('show');
+    userSelectionModalOverlay.setAttribute('aria-hidden', 'true');
   };
 
   selectUsersConfirmBtn.onclick = () => {
@@ -784,7 +772,7 @@
   const createMessage = (name, msg, color) => {
     const content = document.createElement("div");
     content.classList.add("text");
-    content.style.backgroundColor = color; // Apply the background color
+    content.style.backgroundColor = color || 'rgba(255,255,255,0.6)'; // Apply the background color
     content.style.color = "black"; // Ensure text is black for readability
 
     content.innerHTML = `
@@ -828,6 +816,9 @@
   // NEW: Socket.IO event to receive list of online users
   socketio.on("room_users_list", (users) => {
     onlineUsers = users; // Store the list of users
+    // Only show modal or messages when user explicitly requested a call
+    if (!callRequestInProgress) return;
+    callRequestInProgress = false; // reset flag
     if (users.length > 0) {
       showUserSelectionModal(users);
     } else {
@@ -939,11 +930,17 @@
   // --- WebRTC Functions ---
   const startVideoCallInternal = async (deviceId = null) => {
     try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          // On some insecure contexts (http with remote IP) getUserMedia is not available.
+          showMessageBox("Cannot access camera/microphone: this page is not served over a secure context (HTTPS) or device permissions are disabled. Try using https://localhost or enable camera/microphone permissions.", 'alert');
+          return false;
+      }
+
       if (localStream) { // Stop existing stream if switching camera
           localStream.getTracks().forEach(track => track.stop());
       }
       const constraints = {
-          video: deviceId ? { deviceId: { exact: deviceId } } : true,
+          video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: "user" },
           audio: true
       };
       localStream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -953,17 +950,26 @@
       // Store the current camera device ID
       const videoTrack = localStream.getVideoTracks()[0];
       if (videoTrack) {
-          currentCameraDeviceId = videoTrack.getSettings().deviceId;
+          try {
+              const settings = videoTrack.getSettings();
+              currentCameraDeviceId = settings.deviceId || null;
+          } catch (e) {
+              currentCameraDeviceId = null;
+          }
       }
 
       // If peerConnection already exists, replace tracks
       if (peerConnection) {
           const senders = peerConnection.getSenders();
           senders.forEach(sender => {
-              if (sender.track && sender.track.kind === 'video') {
-                  sender.replaceTrack(videoTrack);
-              } else if (sender.track && sender.track.kind === 'audio') {
-                  sender.replaceTrack(localStream.getAudioTracks()[0]);
+              try {
+                  if (sender.track && sender.track.kind === 'video') {
+                      sender.replaceTrack(videoTrack);
+                  } else if (sender.track && sender.track.kind === 'audio') {
+                      sender.replaceTrack(localStream.getAudioTracks()[0]);
+                  }
+              } catch (e) {
+                  console.warn("Failed to replace sender track:", e);
               }
           });
       } else {
@@ -981,9 +987,43 @@
           };
 
           peerConnection.ontrack = (event) => {
-            if (remoteVideo.srcObject !== event.streams[0]) {
-              remoteVideo.srcObject = event.streams[0];
-              remoteVideoWrapper.classList.add('active');
+            try {
+              // Assign the first non-local stream as remote
+              if (event.streams && event.streams[0]) {
+                const remoteStream = event.streams[0];
+                remoteVideo.srcObject = remoteStream;
+                remoteVideoWrapper.classList.add('active');
+                // ensure autoplay
+                try {
+                  remoteVideo.onloadedmetadata = () => remoteVideo.play().catch(()=>{});
+                } catch(err) {}
+
+                // Retry loop: if remote video shows 0 width for some mobile browsers, retry a few times
+                let attempts = 0;
+                const retryInterval = setInterval(() => {
+                  attempts++;
+                  try {
+                    if (remoteVideo && remoteVideo.videoWidth > 0) {
+                      clearInterval(retryInterval);
+                      return;
+                    }
+                    // reassign srcObject and try play again
+                    remoteVideo.srcObject = remoteStream;
+                    remoteVideo.play().catch(()=>{});
+                    if (attempts >= 6) {
+                      clearInterval(retryInterval);
+                    }
+                  } catch (e) {
+                    if (attempts >= 6) clearInterval(retryInterval);
+                  }
+                }, 800);
+
+              } else if (event.stream) {
+                remoteVideo.srcObject = event.stream;
+                remoteVideoWrapper.classList.add('active');
+              }
+            } catch (e) {
+              console.error('Error handling remote track:', e);
             }
           };
 
@@ -1009,18 +1049,25 @@
       // Show video controls
       document.querySelector('.video-controls-overlay').style.display = 'flex';
 
+      // Update inputs height CSS variable used to prevent overlap
+      updateInputsHeightVar();
+
       return true;
     } catch (error) {
       console.error("Error accessing media devices or setting up WebRTC:", error);
       endVideoCall();
 
       let errorMessage = "Could not start video call. ";
-      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+      const name = error && error.name ? error.name : null;
+      const message = error && error.message ? error.message : '';
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
         errorMessage += "Please grant camera and microphone permissions in your browser settings.";
-      } else if (error.name === 'NotFoundError') {
+      } else if (name === 'NotFoundError') {
         errorMessage += "No camera or microphone found. Please ensure devices are connected.";
+      } else if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        errorMessage += "Your browser does not expose getUserMedia on this page. Ensure you're using HTTPS or localhost.";
       } else {
-        errorMessage += `An unexpected error occurred: ${error.name} - ${error.message}`;
+        errorMessage += `An unexpected error occurred: ${name || 'Unknown'} - ${message}`;
       }
       showMessageBox(errorMessage, 'alert');
       videoCallBtn.disabled = true;
@@ -1055,7 +1102,7 @@
       localStream = null;
     }
     if (peerConnection) {
-      peerConnection.close();
+      try { peerConnection.close(); } catch(e) {}
       peerConnection = null;
     }
     localVideo.srcObject = null;
@@ -1070,8 +1117,9 @@
     videoCallBtn.disabled = false;
     document.querySelector('.video-controls-overlay').style.display = 'none'; // Hide video controls
     if (document.fullscreenElement) { // Exit fullscreen if active
-        document.exitFullscreen();
+        try { document.exitFullscreen(); } catch(e) {}
     }
+    updateInputsHeightVar();
   };
 
   // --- User Interaction Functions ---
@@ -1080,6 +1128,8 @@
     if (msg === "") return;
     socketio.emit("message", { data: msg });
     messageInput.value = "";
+    // After sending, ensure keyboard space is adjusted
+    adjustLayoutForKeyboard();
   };
 
   const handleKeyPress = event => {
@@ -1130,7 +1180,7 @@
         return;
       } else if (userCount > 2) {
         // If more than 2 users, prompt for selection
-        socketio.emit("get_room_users"); // Request list of online users
+        callRequestInProgress = true; socketio.emit("get_room_users"); // Request list of online users
         videoCallBtn.innerText = "Calling..."; // Indicate a process is starting
         videoCallBtn.classList.add("hangup");
         videoCallBtn.disabled = true;
@@ -1279,6 +1329,18 @@
   ];
 
   const toggleXOXVisibility = () => {
+      // If user clicks Play XOX and another user exists, directly request a start
+      const userCount = parseInt(document.getElementById('user-count').innerText);
+      if (!isXOXVisible && userCount >= 2) {
+          // user wants to play - request server to start game immediately
+          socketio.emit('game_start_request');
+          isXOXVisible = true;
+          xoxGameContainer.classList.add('active');
+          document.getElementById('xox-game-btn').innerText = 'Hide XOX';
+          updateGameStatus();
+          adjustLayoutForKeyboard();
+          return;
+      }
       isXOXVisible = !isXOXVisible;
       if (isXOXVisible) {
           xoxGameContainer.classList.add('active');
@@ -1419,11 +1481,17 @@
       playerXName = data.player_x_name;
       playerOName = data.player_o_name;
 
+      // Ensure the XOX UI is visible for both players
+      isXOXVisible = true;
+      xoxGameContainer.classList.add('active');
+      document.getElementById('xox-game-btn').innerText = 'Hide XOX';
+
       xoxStartBtn.style.display = 'none';
       xoxResetBtn.style.display = 'none';
 
       createMessage("System", `XOX game started! ${playerXName} is X, ${playerOName} is O. You are **${yourSymbol}**.`);
       updateGameStatus();
+      adjustLayoutForKeyboard();
   });
 
   socketio.on("game_update", (data) => {
@@ -1525,10 +1593,22 @@
 
     const messagesAvailableHeight = viewportHeight - controlsHeight - inputsHeight - typingIndicatorHeight - videoContainerHeight - xoxContainerHeight - totalContainerPadding;
 
-    messages.style.maxHeight = `${messagesAvailableHeight}px`;
+    // Set reasonable minimum to avoid negative heights
+    const finalHeight = Math.max(120, messagesAvailableHeight);
+    messages.style.maxHeight = `${finalHeight}px`;
 
     messages.scrollTop = messages.scrollHeight;
+
+    // Update CSS var for inputs height used in padding calculations
+    updateInputsHeightVar();
   };
+
+  function updateInputsHeightVar() {
+    try {
+      const h = inputsContainer.offsetHeight || 64;
+      document.documentElement.style.setProperty('--inputs-height', `${h}px`);
+    } catch(e) {}
+  }
 
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', adjustLayoutForKeyboard);
@@ -1536,8 +1616,23 @@
     window.addEventListener('resize', adjustLayoutForKeyboard);
   }
 
+
+  // VisualViewport handlers for better mobile keyboard behavior
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', () => {
+      adjustLayoutForKeyboard();
+      // small defer to allow layout settle
+      setTimeout(() => messages.scrollTop = messages.scrollHeight, 120);
+    });
+    window.visualViewport.addEventListener('scroll', () => {
+      // When keyboard opens, some browsers move the visual viewport; ensure input stays visible
+      adjustLayoutForKeyboard();
+    });
+  }
+
   window.addEventListener('load', () => {
     adjustLayoutForKeyboard();
+    updateInputsHeightVar();
     const userCount = parseInt(document.getElementById("user-count").innerText);
     if (userCount >= 2 && !gameActive) {
         document.getElementById('xox-game-btn').disabled = false;
@@ -1548,14 +1643,190 @@
         xoxStartBtn.disabled = true;
     }
   });
-  messageInput.addEventListener('focus', adjustLayoutForKeyboard);
-  messageInput.addEventListener('blur', adjustLayoutForKeyboard);
 
+  // Ensure layout is adjusted when input receives focus (keyboard appears on mobile)
+  messageInput.addEventListener('focus', () => {
+    inputsContainer.classList.add('focused');
+    // Make container visible immediately
+    inputsContainer.style.opacity = '1';
+    inputsContainer.style.transform = 'translateY(0)';
+    adjustLayoutForKeyboard();
+    // On mobile, scroll messages into view when keyboard opens
+    setTimeout(() => {
+      messages.scrollTop = messages.scrollHeight;
+      inputsContainer.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }, 120);
+  });
+  messageInput.addEventListener('blur', () => {
+    setTimeout(() => {
+      inputsContainer.classList.remove('focused');
+      // small fade out effect if needed
+      inputsContainer.style.opacity = '';
+      inputsContainer.style.transform = '';
+      adjustLayoutForKeyboard();
+    }, 150);
+  });
+
+  // improve remote video play reliability (some mobile browsers block autoplay until play() called)
+  remoteVideo.addEventListener('play', () => {
+    // no-op: this confirms remote started
+  });
 </script>
 
 {% for msg in messages %}
 <script type="text/javascript">
   createMessage("{{ msg.name }}", "{{ msg.message }}", "{{ msg.color }}");
+
+/* --- CLIENT-SIDE PATCHES / FIXES (injected) ---
+   Purpose: Fix mobile keyboard layout, improve video-call reliability,
+   make XOX start/sync robust, and add compatibility for multiple server event names.
+   This patch is intentionally additive and does not remove existing functions.
+*/
+(function(){
+  // Safety check for socket connection ready state
+  function onSocketReady(cb) {
+    if (typeof socketio !== 'undefined' && socketio.connected) return cb();
+    if (typeof socketio === 'undefined') return setTimeout(()=>onSocketReady(cb), 200);
+    socketio.on('connect', () => setTimeout(cb, 50));
+  }
+
+  onSocketReady(() => {
+    // Ensure socket id alias is available consistently
+    if (!socketio.id && socketio.io && socketio.io.engine) {
+      socketio.id = socketio.io.engine.id || socketio.id;
+    }
+  });
+
+  // Robust emit wrapper: emit multiple possible server event names (backwards compatibility)
+  function emitCompat(primary, alternates, payload) {
+    try { socketio.emit(primary, payload); } catch(e) {}
+    if (Array.isArray(alternates)) {
+      alternates.forEach(name => { try { socketio.emit(name, payload); } catch(e){} });
+    }
+  }
+
+  // Patch toggleVideoCall to use compatible server events and guard against missing devices
+  const _origToggleVideoCall = window.toggleVideoCall;
+  window.toggleVideoCall = async function patchedToggleVideoCall(){
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showMessageBox("Camera/microphone unavailable. Ensure HTTPS or use latest browser and grant permissions.", 'alert');
+        return;
+      }
+      // call original which contains much of the logic, but patch some emits inside it
+      return _origToggleVideoCall.apply(this, arguments);
+    } catch(e) {
+      console.error("patchedToggleVideoCall error:", e);
+      // fallback: try to emit both event names for requesting users list
+      const userCount = parseInt(document.getElementById("user-count").innerText || "1");
+      if (userCount > 2) {
+        emitCompat("get_room_users", ["request_room_users","room_users_request"], {});
+      }
+    }
+  };
+
+  // Ensure initiateCallWithSelectedUser emits compatible server event names
+  const _origInitiate = window.initiateCallWithSelectedUser;
+  if (_origInitiate) {
+    window.initiateCallWithSelectedUser = async function patchedInitiate(targetSid){
+      // normalize null -> undefined
+      const sid = targetSid === null ? undefined : targetSid;
+      // Try both event names used across server versions
+      emitCompat("call_request", ["request_video_call","video_call_request"], { target_sid: sid });
+      // Also call original logic to maintain peer setup
+      try { return await _origInitiate.apply(this, arguments); } catch(e){ console.error(e); }
+    };
+  }
+
+  // Patch startGame to emit both event names used server-side
+  const _origStartGame = window.startGame;
+  if (_origStartGame) {
+    window.startGame = function patchedStartGame(){
+      const roomCount = parseInt(document.getElementById("user-count").innerText || "1");
+      if (roomCount < 2) { showMessageBox("Need 2 players to start XOX.", 'alert'); return; }
+      emitCompat("game_start_request", ["start_xox_game","start_xox"], {});
+      try { return _origStartGame.apply(this, arguments); } catch(e){ console.error(e); }
+    };
+  }
+
+  // VisualViewport handling and keyboard adjustments for mobile
+  function safeAdjust() {
+    try {
+      if (typeof adjustLayoutForKeyboard === 'function') adjustLayoutForKeyboard();
+      // Keep messages visible above keyboard
+      setTimeout(()=>{ const m = document.getElementById('messages'); if(m) m.scrollTop = m.scrollHeight; }, 120);
+    } catch(e){}
+  }
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', safeAdjust);
+    window.visualViewport.addEventListener('scroll', safeAdjust);
+  } else {
+    window.addEventListener('resize', safeAdjust);
+  }
+
+  // When input focuses, ensure the input container is visible and messages scroll into view quickly
+  const msgInput = document.getElementById('message');
+  if (msgInput) {
+    msgInput.addEventListener('focus', () => {
+      const ic = document.getElementById('inputs-container');
+      if (ic) {
+        ic.classList.add('focused');
+        ic.style.bottom = ( (window.visualViewport && window.visualViewport.offsetTop) ? (window.visualViewport.offsetTop + 12) + 'px' : '12px' );
+      }
+      setTimeout(()=>{ const m = document.getElementById('messages'); if(m) { m.scrollTop = m.scrollHeight; }}, 120);
+    });
+  }
+
+  // Improve remote stream playback handling: try to unmute / play when remote stream attached
+  const _origOntrackSetter = HTMLVideoElement.prototype.play;
+  // no-op if undefined; we'll add event listener instead for remoteVideo
+  try {
+    const remote = document.getElementById('remote-video');
+    if (remote) {
+      remote.addEventListener('loadedmetadata', () => { try { remote.play().catch(()=>{}); } catch(e){} });
+      remote.addEventListener('play', () => { /* remote is playing */ });
+    }
+  } catch(e){ console.warn("remote-video patch failed", e); }
+
+  // Add defensive listeners for multiple server event names for call lifecycle
+  const callEvents = [
+    "call_request", "request_video_call", "video_call_request",
+    "call_accepted", "call_rejected", "call_end", "end_video_call"
+  ];
+
+  callEvents.forEach(ev => {
+    socketio.off && socketio.off(ev); // try clearing previous to avoid duplicates
+    socketio.on(ev, (data)=> {
+      // normalize to existing handlers where possible
+      if (ev === 'call_request' || ev === 'request_video_call' || ev === 'video_call_request') {
+        // reuse existing flow: show acceptance modal if available
+        if (typeof window.showMessageBox === 'function') {
+          showMessageBox((data && data.from ? data.from : "Someone") + " is calling you. Do you want to accept?", 'confirm',
+            async () => {
+              try {
+                isInitiator = false; isCalling = true;
+                await startVideoCallInternal();
+                socketio.emit("call_response", { action: "accept", requester_sid: data.requester_sid || data.from_sid || null });
+                await createAnswer();
+              } catch(e) { console.error(e); }
+            },
+            () => { try { socketio.emit("call_response", { action: "reject", requester_sid: data.requester_sid || null }); } catch(e){} }
+          );
+        }
+      } else if (ev === 'call_accepted') {
+        // existing handler creates offer - keep consistency
+        if (typeof createOffer === 'function') createOffer().catch(()=>{});
+      } else if (ev === 'end_video_call' || ev === 'call_end') {
+        if (typeof endVideoCall === 'function') endVideoCall();
+      }
+    });
+  });
+
+  // Final log to indicate patch applied
+  console.info("Compatibility & mobile patch applied (client-side).");
+})();
+// --- END OF PATCH ---
 </script>
 {% endfor %}
 {% endblock %}

@@ -66,66 +66,68 @@
             align-items: center;
         }
 
-        .join input {
-            width: 70%;
+        .join input[type="text"] {
+            width: 65%;
+            margin-right: 10px;
         }
 
         .join button {
-            width: 25%;
+            width: 35%;
             padding: 10px;
             border: none;
-            background: #6e7dff;
-            color: #fff;
             border-radius: 5px;
+            background-color: #4CAF50;
+            color: white;
+            font-weight: bold;
             cursor: pointer;
-            transition: background 0.3s;
+            transition: background-color 0.3s;
         }
 
         .join button:hover {
-            background: #5a6bd8;
+            background-color: #45a049;
         }
 
         .create-btn {
             width: 100%;
-            padding: 10px;
+            padding: 12px;
             border: none;
-            background: #005EF7;
-            color: #fff;
             border-radius: 5px;
+            background-color: #007bff;
+            color: white;
+            font-weight: bold;
             cursor: pointer;
-            transition: background 0.3s;
             margin-top: 10px;
+            transition: background-color 0.3s;
         }
 
         .create-btn:hover {
-            background: #2B4661;
-        }
-
-        .error {
-            color: red;
-            font-size: 0.9em;
-            margin-top: 10px;
-            text-align: center;
-        }
-
-        .mode-selection {
-            margin-top: 10px;
-            margin-bottom: 10px;
-            font-size: 0.95em;
+            background-color: #0056b3;
         }
 
         .mode-selection label {
-            margin-right: 10px;
+            display: inline-block;
+            margin-right: 15px;
+            font-weight: normal;
         }
 
-        /* Animation */
+        .error {
+            color: crimson;
+            background-color: #ffeaea;
+            border: 1px solid crimson;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 15px;
+        }
+
+        .error ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
         @keyframes fadeIn {
-            from {
-                opacity: 0;
-            }
-            to {
-                opacity: 1;
-            }
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
         }
     </style>
 </head>
@@ -154,7 +156,6 @@
                 <button type="submit" name="join">Join a Room</button>
             </div>
 
-            <!-- ✅ Chat Mode Selection -->
             <div class="form-group mode-selection">
                 <label><input type="radio" name="mode" value="full" checked /> Full Chat Mode</label>
                 <label><input type="radio" name="mode" value="privacy" /> Privacy Mode</label>
@@ -162,13 +163,17 @@
 
             <button type="submit" name="create" class="create-btn">Create a Room</button>
 
-            {% if error %}
-            <div class="error">
-                <ul>
-                    <li>{{error}}</li>
-                </ul>
-            </div>
-            {% endif %}
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="error" style="color: {{ 'crimson' if category == 'error' else 'green' }}; border-color: {{ 'crimson' if category == 'error' else 'green' }};">
+                            <ul>
+                                <li>{{ message }}</li>
+                            </ul>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
         </form>
     </div>
 </body>

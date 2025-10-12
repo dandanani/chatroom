@@ -58,12 +58,13 @@ h2 {
   display: flex;
   flex-direction: row;
   align-items: center;
-  justify-content: space-between;
-  padding-left: 10px;
-  padding-right: 10px;
 }
 
-.muted {
-  font-size: 10px;
-  color: darkgray;
+/* NEW: Style for the message timestamp (to support maximsized text) */
+.timestamp-display {
+  font-size: 0.8rem;
+  color: rgba(51, 51, 51, 0.7);
+  margin-top: 2px;
+  display: block;
+  text-align: right;
 }
