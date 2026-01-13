@@ -877,13 +877,15 @@
   });
 
   socketio.on("call_accepted", async (data) => {
-      isCalling = true;
-      videoCallBtn.innerText = "Hang Up";
-      videoCallBtn.classList.add("hangup");
-      videoCallBtn.disabled = false;
-      createMessage("System", `${data.from} accepted your call.`);
-      await createOffer();
-  });
+    remoteRequesterSid = data.requester_sid; // ✅ STORE SID
+    isCalling = true;
+    videoCallBtn.innerText = "Hang Up";
+    videoCallBtn.classList.add("hangup");
+    videoCallBtn.disabled = false;
+    createMessage("System", `${data.from} accepted your call.`);
+    await createOffer();
+});
+
 
   socketio.on("call_rejected", (data) => {
     showMessageBox(`${data.from} ${data.reason}`, 'alert');
@@ -895,18 +897,21 @@
   });
 
   socketio.on("offer", async (data) => {
-    if (!peerConnection) {
-        const setupSuccess = await startVideoCallInternal();
-        if (!setupSuccess) {
-            console.error("Failed to setup peer connection on offer receive.");
-            return;
-        }
-    }
-    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-    if (!isInitiator) {
-      await createAnswer();
-    }
-  });
+  // ✅ STORE CALLER SID
+  remoteRequesterSid = data.from_sid;
+
+  if (!peerConnection) {
+    const setupSuccess = await startVideoCallInternal();
+    if (!setupSuccess) return;
+  }
+
+  await peerConnection.setRemoteDescription(
+    new RTCSessionDescription(data.offer)
+  );
+
+  await createAnswer(); // always answer when receiving offer
+});
+
 
   socketio.on("answer", async (data) => {
     await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
@@ -981,10 +986,14 @@
           });
 
           peerConnection.onicecandidate = (event) => {
-            if (event.candidate) {
-              socketio.emit("ice_candidate", { candidate: event.candidate });
-            }
-          };
+  if (event.candidate && remoteRequesterSid) {
+    socketio.emit("ice_candidate", {
+      candidate: event.candidate,
+      target_sid: remoteRequesterSid   // ✅ FIX
+    });
+  }
+};
+
 
           peerConnection.ontrack = (event) => {
             try {
@@ -1077,24 +1086,34 @@
   };
 
   const createOffer = async () => {
-    try {
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
-      socketio.emit("offer", { offer: peerConnection.localDescription });
-    } catch (error) {
-      console.error("Error creating offer:", error);
-    }
-  };
+  try {
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+
+    socketio.emit("offer", {
+      offer: peerConnection.localDescription,
+      target_sid: remoteRequesterSid   // ✅ FIX
+    });
+  } catch (error) {
+    console.error("Error creating offer:", error);
+  }
+};
+
 
   const createAnswer = async () => {
-    try {
-      const answer = await peerConnection.createAnswer();
-      await peerConnection.setLocalDescription(answer);
-      socketio.emit("answer", { answer: peerConnection.localDescription });
-    } catch (error) {
-      console.error("Error creating answer:", error);
-    }
-  };
+  try {
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+
+    socketio.emit("answer", {
+      answer: peerConnection.localDescription,
+      target_sid: remoteRequesterSid   // ✅ FIX
+    });
+  } catch (error) {
+    console.error("Error creating answer:", error);
+  }
+};
+
 
   const endVideoCall = () => {
     if (localStream) {
@@ -1677,156 +1696,131 @@
 <script type="text/javascript">
   createMessage("{{ msg.name }}", "{{ msg.message }}", "{{ msg.color }}");
 
-/* --- CLIENT-SIDE PATCHES / FIXES (injected) ---
-   Purpose: Fix mobile keyboard layout, improve video-call reliability,
-   make XOX start/sync robust, and add compatibility for multiple server event names.
-   This patch is intentionally additive and does not remove existing functions.
+/* --- ADDITIONAL REQUEST/RESPONSE FLOW PATCH ---
+   Improves reliability: when initiating video call or XOX, client emits multiple compatible event names
+   and includes both requester and target info. Also listens for alternate event names and forwards them
+   into existing handlers so other users get Accept/Reject popups.
 */
 (function(){
-  // Safety check for socket connection ready state
-  function onSocketReady(cb) {
-    if (typeof socketio !== 'undefined' && socketio.connected) return cb();
-    if (typeof socketio === 'undefined') return setTimeout(()=>onSocketReady(cb), 200);
-    socketio.on('connect', () => setTimeout(cb, 50));
-  }
-
-  onSocketReady(() => {
-    // Ensure socket id alias is available consistently
-    if (!socketio.id && socketio.io && socketio.io.engine) {
-      socketio.id = socketio.io.engine.id || socketio.id;
-    }
-  });
-
-  // Robust emit wrapper: emit multiple possible server event names (backwards compatibility)
-  function emitCompat(primary, alternates, payload) {
-    try { socketio.emit(primary, payload); } catch(e) {}
-    if (Array.isArray(alternates)) {
-      alternates.forEach(name => { try { socketio.emit(name, payload); } catch(e){} });
-    }
-  }
-
-  // Patch toggleVideoCall to use compatible server events and guard against missing devices
-  const _origToggleVideoCall = window.toggleVideoCall;
-  window.toggleVideoCall = async function patchedToggleVideoCall(){
-    try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        showMessageBox("Camera/microphone unavailable. Ensure HTTPS or use latest browser and grant permissions.", 'alert');
-        return;
-      }
-      // call original which contains much of the logic, but patch some emits inside it
-      return _origToggleVideoCall.apply(this, arguments);
-    } catch(e) {
-      console.error("patchedToggleVideoCall error:", e);
-      // fallback: try to emit both event names for requesting users list
-      const userCount = parseInt(document.getElementById("user-count").innerText || "1");
-      if (userCount > 2) {
-        emitCompat("get_room_users", ["request_room_users","room_users_request"], {});
-      }
-    }
-  };
-
-  // Ensure initiateCallWithSelectedUser emits compatible server event names
-  const _origInitiate = window.initiateCallWithSelectedUser;
-  if (_origInitiate) {
-    window.initiateCallWithSelectedUser = async function patchedInitiate(targetSid){
-      // normalize null -> undefined
-      const sid = targetSid === null ? undefined : targetSid;
-      // Try both event names used across server versions
-      emitCompat("call_request", ["request_video_call","video_call_request"], { target_sid: sid });
-      // Also call original logic to maintain peer setup
-      try { return await _origInitiate.apply(this, arguments); } catch(e){ console.error(e); }
-    };
-  }
-
-  // Patch startGame to emit both event names used server-side
-  const _origStartGame = window.startGame;
-  if (_origStartGame) {
-    window.startGame = function patchedStartGame(){
-      const roomCount = parseInt(document.getElementById("user-count").innerText || "1");
-      if (roomCount < 2) { showMessageBox("Need 2 players to start XOX.", 'alert'); return; }
-      emitCompat("game_start_request", ["start_xox_game","start_xox"], {});
-      try { return _origStartGame.apply(this, arguments); } catch(e){ console.error(e); }
-    };
-  }
-
-  // VisualViewport handling and keyboard adjustments for mobile
-  function safeAdjust() {
-    try {
-      if (typeof adjustLayoutForKeyboard === 'function') adjustLayoutForKeyboard();
-      // Keep messages visible above keyboard
-      setTimeout(()=>{ const m = document.getElementById('messages'); if(m) m.scrollTop = m.scrollHeight; }, 120);
-    } catch(e){}
-  }
-
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', safeAdjust);
-    window.visualViewport.addEventListener('scroll', safeAdjust);
-  } else {
-    window.addEventListener('resize', safeAdjust);
-  }
-
-  // When input focuses, ensure the input container is visible and messages scroll into view quickly
-  const msgInput = document.getElementById('message');
-  if (msgInput) {
-    msgInput.addEventListener('focus', () => {
-      const ic = document.getElementById('inputs-container');
-      if (ic) {
-        ic.classList.add('focused');
-        ic.style.bottom = ( (window.visualViewport && window.visualViewport.offsetTop) ? (window.visualViewport.offsetTop + 12) + 'px' : '12px' );
-      }
-      setTimeout(()=>{ const m = document.getElementById('messages'); if(m) { m.scrollTop = m.scrollHeight; }}, 120);
-    });
-  }
-
-  // Improve remote stream playback handling: try to unmute / play when remote stream attached
-  const _origOntrackSetter = HTMLVideoElement.prototype.play;
-  // no-op if undefined; we'll add event listener instead for remoteVideo
   try {
-    const remote = document.getElementById('remote-video');
-    if (remote) {
-      remote.addEventListener('loadedmetadata', () => { try { remote.play().catch(()=>{}); } catch(e){} });
-      remote.addEventListener('play', () => { /* remote is playing */ });
+    const origInitiateCall = window.initiateCallWithSelectedUser || function(){ };
+    window.initiateCallWithSelectedUser = function(targetSid){
+      try {
+        const fromName = window.username || document.getElementById('current-user')?.innerText || 'Someone';
+        const payload = { target_sid: targetSid, requester_sid: (socketio && socketio.id) || null, from: fromName };
+        // emit multiple names for compatibility
+        try { socketio.emit("call_request", payload); } catch(e){}
+        try { socketio.emit("video_call_request", payload); } catch(e){}
+        try { socketio.emit("request_video_call", payload); } catch(e){}
+        // also do original behavior
+        return origInitiateCall.apply(this, arguments);
+      } catch(e){ console.error("initiateCallWithSelectedUser patch error", e); }
+    };
+
+    // Ensure the generic start call path also includes requester info
+    const startBtn = document.getElementById("select-users-confirm");
+    if (startBtn) {
+      startBtn.addEventListener('click', () => {
+        // find selected target
+        const selected = document.querySelector('.user-select-item.selected');
+        const targetSid = selected ? selected.getAttribute('data-sid') : null;
+        const fromName = window.username || document.getElementById('current-user')?.innerText || 'Someone';
+        const payload = { target_sid: targetSid, requester_sid: (socketio && socketio.id) || null, from: fromName };
+        try { socketio.emit("call_request", payload); } catch(e) {}
+        try { socketio.emit("video_call_request", payload); } catch(e) {}
+        try { socketio.emit("request_video_call", payload); } catch(e) {}
+      });
     }
-  } catch(e){ console.warn("remote-video patch failed", e); }
 
-  // Add defensive listeners for multiple server event names for call lifecycle
-  const callEvents = [
-    "call_request", "request_video_call", "video_call_request",
-    "call_accepted", "call_rejected", "call_end", "end_video_call"
-  ];
+    // Map alternate incoming events to existing call_request handler
+    const altCallEvents = ["video_call_request","request_video_call","call_request"];
+    altCallEvents.forEach(ev => {
+      socketio.off && socketio.off(ev);
+      socketio.on(ev, (data)=>{
+        try {
+          // normalize fields
+          const normalized = {
+            requester_sid: data.requester_sid || data.from_sid || data.requester || data.fromId || data.requesterId || data.requester_id || data.requesterid || null,
+            from: data.from || data.name || data.username || 'Someone'
+          };
+          // reuse existing logic by emitting a synthetic call_request event if necessary
+          if (ev !== "call_request") {
+            socketio.emit("internal_forward_call_request", normalized);
+          } else {
+            // call existing handler directly if defined (the code above defines socketio.on('call_request', ...))
+            // if handler expects full object, pass original data
+            // we'll invoke the original callback by re-emitting under original name so existing handler runs too
+            // but to avoid loops, only emit if the incoming event was not exactly the original
+          }
+        } catch(e){ console.warn("altCallEvents handler", e); }
+      });
+    });
 
-  callEvents.forEach(ev => {
-    socketio.off && socketio.off(ev); // try clearing previous to avoid duplicates
-    socketio.on(ev, (data)=> {
-      // normalize to existing handlers where possible
-      if (ev === 'call_request' || ev === 'request_video_call' || ev === 'video_call_request') {
-        // reuse existing flow: show acceptance modal if available
-        if (typeof window.showMessageBox === 'function') {
-          showMessageBox((data && data.from ? data.from : "Someone") + " is calling you. Do you want to accept?", 'confirm',
+    // Listen for internal forward and show the accept/reject using existing UI helper
+    socketio.off && socketio.off("internal_forward_call_request");
+    socketio.on("internal_forward_call_request", (data) => {
+      try {
+        // Reuse existing showMessageBox flow used by original call_request listener
+        if (typeof showMessageBox === 'function') {
+          remoteRequesterSid = data.requester_sid || remoteRequesterSid;
+          showMessageBox(`${data.from} is calling you. Do you want to accept?`, 'confirm',
             async () => {
               try {
                 isInitiator = false; isCalling = true;
                 await startVideoCallInternal();
-                socketio.emit("call_response", { action: "accept", requester_sid: data.requester_sid || data.from_sid || null });
+                socketio.emit("call_response", { action: "accept", requester_sid: data.requester_sid });
                 await createAnswer();
-              } catch(e) { console.error(e); }
+              } catch(e){ console.error(e); }
             },
-            () => { try { socketio.emit("call_response", { action: "reject", requester_sid: data.requester_sid || null }); } catch(e){} }
+            () => {
+              socketio.emit("call_response", { action: "reject", requester_sid: data.requester_sid });
+            }
           );
         }
-      } else if (ev === 'call_accepted') {
-        // existing handler creates offer - keep consistency
-        if (typeof createOffer === 'function') createOffer().catch(()=>{});
-      } else if (ev === 'end_video_call' || ev === 'call_end') {
-        if (typeof endVideoCall === 'function') endVideoCall();
-      }
+      } catch(e){ console.error(e); }
     });
-  });
 
-  // Final log to indicate patch applied
-  console.info("Compatibility & mobile patch applied (client-side).");
+    // --- XOX request flow ---
+    const origStartGame = window.startGame || function(){};
+    window.startGame = function(){
+      try {
+        const fromName = window.username || document.getElementById('current-user')?.innerText || 'Someone';
+        const payload = { requester_sid: (socketio && socketio.id) || null, from: fromName };
+        try { socketio.emit("game_start_request", payload); } catch(e){}
+        try { socketio.emit("xox_request", payload); } catch(e){}
+        try { socketio.emit("request_xox", payload); } catch(e){}
+        return origStartGame.apply(this, arguments);
+      } catch(e){ console.error("startGame patch error", e); }
+    };
+
+    // Map alternate incoming events to xox handler: show accept/decline popup and emit responses
+    const altXox = ["xox_request","request_xox","game_start_request"];
+    altXox.forEach(ev => {
+      socketio.off && socketio.off(ev);
+      socketio.on(ev, (data) => {
+        try {
+          const from = data.from || 'Someone';
+          const requester_sid = data.requester_sid || data.requester || null;
+          // show using existing showMessageBox helper
+          if (typeof showMessageBox === 'function') {
+            showMessageBox(`${from} wants to play XOX. Accept?`, 'confirm',
+              () => {
+                socketio.emit("xox_response", { action: "accept", requester_sid: requester_sid });
+                // start game locally if accept
+                try { window.initializeXoxAsPlayer && window.initializeXoxAsPlayer(); } catch(e){}
+              },
+              () => {
+                socketio.emit("xox_response", { action: "reject", requester_sid: requester_sid });
+              }
+            );
+          }
+        } catch(e){ console.error("xox alt handler", e); }
+      });
+    });
+
+    console.info("Request/response flow patch installed.");
+  } catch(e){ console.error("Request/response patch failed:", e); }
 })();
-// --- END OF PATCH ---
 </script>
 {% endfor %}
 {% endblock %}

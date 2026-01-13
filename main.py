@@ -41,7 +41,7 @@ app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY",
 
 # Security headers for session cookies
 app.config["SESSION_COOKIE_SECURE"] = False
-app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_HTTPONLY"] = False
 app.config["SESSION_COOKIE_SAMESITE"] = 'Lax'
 
 # --- Socket.IO Configuration ---
@@ -629,6 +629,92 @@ def request_video_call(data):
     logger.info(
         f"Video call offer sent from {name} (SID: {sid}) to {rooms[room]['sids'][recipient_sid]} (SID: {recipient_sid}) in room {room}.")
 
+# -------- WEBRTC SIGNALING --------
+
+@socketio.on("call_request")
+def handle_call_request(data):
+    room = session.get("room")
+    caller_sid = request.sid
+    caller_name = session.get("name")
+    target_sid = data.get("target_sid")
+
+    if not room or room not in rooms:
+        return
+
+    # Auto-pick other user if only 2 users
+    if not target_sid:
+        for sid in rooms[room]["sids"]:
+            if sid != caller_sid:
+                target_sid = sid
+                break
+
+    if not target_sid or target_sid not in rooms[room]["sids"]:
+        emit("call_rejected", {
+            "from": "System",
+            "reason": "User not available"
+        }, to=caller_sid)
+        return
+
+    emit("call_request", {
+        "from": caller_name,
+        "requester_sid": caller_sid
+    }, to=target_sid)
+
+
+
+@socketio.on("call_response")
+def handle_call_response(data):
+    action = data.get("action")
+    requester_sid = data.get("requester_sid")
+    responder_sid = request.sid
+    responder_name = session.get("name")
+
+    if action == "accept":
+        emit("call_accepted", {
+            "from": responder_name,
+            "requester_sid": responder_sid
+        }, to=requester_sid)
+
+    else:
+        emit("call_rejected", {
+            "from": responder_name,
+            "reason": "rejected the call"
+        }, to=requester_sid)
+
+
+
+@socketio.on("offer")
+def handle_offer(data):
+    emit("offer", {
+        "offer": data["offer"],
+        "from_sid": request.sid
+    }, to=data["target_sid"])
+
+
+
+@socketio.on("answer")
+def handle_answer(data):
+    emit("answer", {
+        "answer": data["answer"]
+    }, to=data["target_sid"])
+
+
+@socketio.on("ice_candidate")
+def handle_ice_candidate(data):
+    emit("ice_candidate", {
+        "candidate": data["candidate"]
+    }, to=data["target_sid"])
+
+
+@socketio.on("call_end")
+def handle_call_end():
+    room = session.get("room")
+    sid = request.sid
+
+    if room and room in rooms:
+        for other_sid in rooms[room]["sids"]:
+            if other_sid != sid:
+                emit("call_end", {"name": session.get("name")}, to=other_sid)
 
 @socketio.on("video_answer")
 def video_answer(data):
