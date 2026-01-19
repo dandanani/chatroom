@@ -51,7 +51,7 @@ app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = 'Lax'
 
 # --- Socket.IO Configuration ---
-socketio = SocketIO(app, cors_allowed_origins="http://127.0.0.1:5000", manage_session=False)
+socketio = SocketIO(app, cors_allowed_origins="https://chatroom-t03j.onrender.com/", manage_session=False)
 
 # --- Rate Limiting Configuration ---
 limiter = Limiter(
