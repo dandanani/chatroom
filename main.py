@@ -20,6 +20,12 @@ from flask import Flask, render_template, request, session, redirect, url_for, f
 from flask_socketio import join_room, leave_room, send, SocketIO, emit
 from markupsafe import escape
 
+
+def sanitize_text(value: str) -> str:
+    if not value:
+        return ""
+    return escape(value.strip())
+
 # Flask-Dance for Google OAuth (COMMENTED OUT FOR NOW)
 # from flask_dance.contrib.google import make_google_blueprint, google
 # from flask_dance.consumer import oauth_authorized, oauth_error
@@ -40,12 +46,12 @@ app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY",
                                           "a_very_long_and_random_string_for_dev_only_replace_this_in_prod")
 
 # Security headers for session cookies
-app.config["SESSION_COOKIE_SECURE"] = False
-app.config["SESSION_COOKIE_HTTPONLY"] = False
+app.config["SESSION_COOKIE_SECURE"] = True
+app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = 'Lax'
 
 # --- Socket.IO Configuration ---
-socketio = SocketIO(app, cors_allowed_origins="*", manage_session=False)
+socketio = SocketIO(app, cors_allowed_origins="http://127.0.0.1:5000", manage_session=False)
 
 # --- Rate Limiting Configuration ---
 limiter = Limiter(
@@ -197,8 +203,8 @@ def home():
     session.clear()  # Clear all session data for a clean start
 
     if request.method == "POST":
-        name = request.form.get("name")  # Get name directly from form
-        code = request.form.get("code")
+        name = sanitize_text(request.form.get("name"))  # Get name directly from form
+        code = sanitize_text(request.form.get("code"))
         join = "join" in request.form
         create = "create" in request.form
         mode = request.form.get("mode", "full")
@@ -283,7 +289,7 @@ def room():
 @socketio.on("message")
 def message(data):
     room = session.get("room")
-    name = session.get("name")
+    name = sanitize_text(session.get("name"))
     sid = request.sid
     # Removed current_user.is_authenticated check
     if not room or not name or room not in rooms:
@@ -354,8 +360,14 @@ def connect(auth):
 
     timestamp = datetime.now().strftime("%I:%M %p")  # NEW: Timestamp for system messages
 
-    send({"name": "System", "message": f"{name} has joined the room.", "timestamp": timestamp}, to=room,
-         include_self=False)  # ADDED timestamp
+    safe_name = sanitize_text(name)
+
+    send({
+        "name": "System",
+        "message": f"{safe_name} has joined the room.",
+        "timestamp": timestamp
+    }, to=room)
+    # ADDED timestamp
     send({"name": "System", "message": f"Welcome to room {room}, {name}!", "timestamp": timestamp},
          to=sid)  # ADDED timestamp
     rooms[room]["members"] += 1
