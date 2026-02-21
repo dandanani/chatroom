@@ -586,11 +586,11 @@
 <div class="chat-container">
   <div class="controls">
     <div>
-      <strong>Room Code:</strong> {{ code }} |
+      <strong>Room Code:</strong> {{ code | e }} |
       <strong>Users:</strong> <span id="user-count">1</span>
     </div>
     <div>
-      <span style="font-weight: bold; color: var(--text-color, black);">Logged in as: {{ name }}</span>
+      <span style="font-weight: bold; color: var(--text-color, black);">Logged in as: {{ name | e }}</span>
     </div>
     <div>
       <button class="video-call-btn" id="video-call-btn" onclick="toggleVideoCall()">📞 Start Video Call</button>
@@ -672,7 +672,10 @@
 
 
 <script type="text/javascript">
-  const socketio = io();
+  const socketio = io({
+  transports: ["websocket"],
+  upgrade: true
+});
   const messages = document.getElementById("messages");
   const messageInput = document.getElementById("message");
   const typingIndicator = document.getElementById("typing-indicator");
@@ -806,22 +809,28 @@
   
   // Function to create and append message elements with dynamic colors
   const createMessage = (name, msg, color) => {
-    const content = document.createElement("div");
-    content.classList.add("text");
-    content.style.backgroundColor = color || 'rgba(255,255,255,0.6)'; // Apply the background color
-    content.style.color = "black"; // Ensure text is black for readability
-  
-    content.innerHTML = `
-      <span><strong>${name}</strong>: ${msg}</span>
-    `;
-    messages.appendChild(content);
-    messages.scrollTop = messages.scrollHeight; // Auto-scroll to bottom
-  
-    // Auto-delete oldest messages if in privacy mode and limit exceeded
-    if (mode === "privacy" && messages.children.length > 5) {
-      messages.removeChild(messages.firstChild);
-    }
-  };
+  const content = document.createElement("div");
+  content.classList.add("text");
+  content.style.backgroundColor = color || 'rgba(255,255,255,0.6)';
+  content.style.color = "black";
+
+  const strong = document.createElement("strong");
+  strong.textContent = name;   // SAFE
+
+  const text = document.createElement("span");
+  text.textContent = `: ${msg}`; // SAFE
+
+  content.appendChild(strong);
+  content.appendChild(text);
+
+  messages.appendChild(content);
+  messages.scrollTop = messages.scrollHeight;
+
+  if (mode === "privacy" && messages.children.length > 5) {
+    messages.removeChild(messages.firstChild);
+  }
+};
+
   
   // Socket.IO event listeners
   socketio.on("message", data => {
@@ -1198,7 +1207,7 @@
   const sendMessage = () => {
     const msg = messageInput.value.trim();
     if (msg === "") return;
-    socketio.emit("message", { data: msg });
+    socketio.emit("message", msg);
     messageInput.value = "";
     // After sending, ensure keyboard space is adjusted
     adjustLayoutForKeyboard();
@@ -1754,21 +1763,6 @@
    and includes both requester and target info. Also listens for alternate event names and forwards them
    into existing handlers so other users get Accept/Reject popups.
   */
-  (function(){
-  try {
-    const origInitiateCall = window.initiateCallWithSelectedUser || function(){ };
-    window.initiateCallWithSelectedUser = function(targetSid){
-      try {
-        const fromName = window.username || document.getElementById('current-user')?.innerText || 'Someone';
-        const payload = { target_sid: targetSid, requester_sid: (socketio && socketio.id) || null, from: fromName };
-        // emit multiple names for compatibility
-        try { socketio.emit("call_request", payload); } catch(e){}
-        try { socketio.emit("video_call_request", payload); } catch(e){}
-        try { socketio.emit("request_video_call", payload); } catch(e){}
-        // also do original behavior
-        return origInitiateCall.apply(this, arguments);
-      } catch(e){ console.error("initiateCallWithSelectedUser patch error", e); }
-    };
   
     // Ensure the generic start call path also includes requester info
     const startBtn = document.getElementById("select-users-confirm");

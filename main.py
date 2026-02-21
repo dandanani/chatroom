@@ -20,12 +20,6 @@ from flask import Flask, render_template, request, session, redirect, url_for, f
 from flask_socketio import join_room, leave_room, send, SocketIO, emit
 from markupsafe import escape
 
-
-def sanitize_text(value: str) -> str:
-    if not value:
-        return ""
-    return escape(value.strip())
-
 # Flask-Dance for Google OAuth (COMMENTED OUT FOR NOW)
 # from flask_dance.contrib.google import make_google_blueprint, google
 # from flask_dance.consumer import oauth_authorized, oauth_error
@@ -46,13 +40,12 @@ app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY",
                                           "a_very_long_and_random_string_for_dev_only_replace_this_in_prod")
 
 # Security headers for session cookies
-app.config["SESSION_COOKIE_SECURE"] = True
-app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SECURE"] = False
+app.config["SESSION_COOKIE_HTTPONLY"] = False
 app.config["SESSION_COOKIE_SAMESITE"] = 'Lax'
 
 # --- Socket.IO Configuration ---
-socketio = SocketIO(app, cors_allowed_origins="https://chatroom-t03j.onrender.com/", manage_session=False)
-
+socketio = SocketIO(app, cors_allowed_origins="*", manage_session=False)
 # --- Rate Limiting Configuration ---
 limiter = Limiter(
     app=app,
@@ -203,8 +196,8 @@ def home():
     session.clear()  # Clear all session data for a clean start
 
     if request.method == "POST":
-        name = sanitize_text(request.form.get("name"))  # Get name directly from form
-        code = sanitize_text(request.form.get("code"))
+        name = request.form.get("name")  # Get name directly from form
+        code = request.form.get("code")
         join = "join" in request.form
         create = "create" in request.form
         mode = request.form.get("mode", "full")
@@ -289,7 +282,7 @@ def room():
 @socketio.on("message")
 def message(data):
     room = session.get("room")
-    name = sanitize_text(session.get("name"))
+    name = session.get("name")
     sid = request.sid
     # Removed current_user.is_authenticated check
     if not room or not name or room not in rooms:
@@ -303,7 +296,12 @@ def message(data):
         return
 
     last_message_time[sid] = current_time
-    sanitized_message = escape(data.get("data", ""))
+    # Accept both string and object
+    if isinstance(data, str):
+        sanitized_message = escape(data)
+    else:
+        sanitized_message = escape(data.get("data", ""))
+
     user_color = get_user_color(room, sid)  # Get the color for the sender
 
     timestamp = datetime.now().strftime("%I:%M %p")  # NEW: Generate timestamp
@@ -360,14 +358,8 @@ def connect(auth):
 
     timestamp = datetime.now().strftime("%I:%M %p")  # NEW: Timestamp for system messages
 
-    safe_name = sanitize_text(name)
-
-    send({
-        "name": "System",
-        "message": f"{safe_name} has joined the room.",
-        "timestamp": timestamp
-    }, to=room)
-    # ADDED timestamp
+    send({"name": "System", "message": f"{name} has joined the room.", "timestamp": timestamp}, to=room,
+         include_self=False)  # ADDED timestamp
     send({"name": "System", "message": f"Welcome to room {room}, {name}!", "timestamp": timestamp},
          to=sid)  # ADDED timestamp
     rooms[room]["members"] += 1
@@ -697,6 +689,10 @@ def handle_call_response(data):
 
 @socketio.on("offer")
 def handle_offer(data):
+    room = session.get("room")
+    if not room:
+        return
+
     emit("offer", {
         "offer": data["offer"],
         "from_sid": request.sid
@@ -751,22 +747,19 @@ def video_answer(data):
         f"Video call answer sent from {name} (SID: {sid}) to {rooms[room]['sids'][recipient_sid]} (SID: {recipient_sid}) in room {room}.")
 
 
-@socketio.on("ice_candidate")
-def ice_candidate(data):
+@socketio.on("get_room_users")
+def get_room_users():
     room = session.get("room")
-    name = session.get("name")
-    sid = request.sid
-    recipient_sid = data.get("recipient_sid")
 
-    if not room or not name or room not in rooms or recipient_sid not in rooms[room]["sids"]:
+    if not room or room not in rooms:
         return
 
-    # Forward the ICE candidate to the peer
-    emit("ice_candidate", {
-        "candidate": data["candidate"],
-        "sender_sid": sid
-    }, room=recipient_sid)
+    users = [
+        {"sid": sid, "name": name}
+        for sid, name in rooms[room]["sids"].items()
+    ]
 
+    emit("room_users_list", users, to=request.sid)
 
 @socketio.on("end_video_call")
 def end_video_call(data):
