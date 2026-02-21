@@ -40,9 +40,9 @@ app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY",
                                           "a_very_long_and_random_string_for_dev_only_replace_this_in_prod")
 
 # Security headers for session cookies
-app.config["SESSION_COOKIE_SECURE"] = False
-app.config["SESSION_COOKIE_HTTPONLY"] = False
-app.config["SESSION_COOKIE_SAMESITE"] = 'Lax'
+app.config["SESSION_COOKIE_SECURE"] = True
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = 'Strict'
 
 # --- Socket.IO Configuration ---
 socketio = SocketIO(app, cors_allowed_origins="*", manage_session=False)
