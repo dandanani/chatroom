@@ -1,1988 +1,2131 @@
-{% extends 'base.html' %}
-{% block content %}
+{% extends 'base.html' %} {% block content %}
 <style>
-  html,
-  body {
-    margin: 0;
-    padding: 0;
-    height: 100%;
-    background: var(--bg-color, #ece6fa);
-    color: var(--text-color, black);
-    font-family: Arial, sans-serif;
-    transition: background 0.3s, color 0.3s;
-    overflow: hidden;
-  }
-
-  /* Main flex container for the entire chat interface */
-  .chat-container {
-    display: flex;
-    flex-direction: column;
-    height: var(--app-height);
-    overflow: hidden;
-    width: 100vw;
-    background: linear-gradient(135deg, #ece6fa, #ece6fa);
-    padding: 10px;
-    box-sizing: border-box;
-  }
-
-  /* Controls at the top (Room Code, Users, Buttons) */
-  .controls {
-  position: relative;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-}
-
-.controls-left {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.controls-right {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  display: flex;
-  gap: 8px;
-}
-
-.controls-right button {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  padding: 0;
-  font-size: 18px;
-}
-
-.controls > div {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-  /* Video container for local and remote streams */
-  .video-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 10px;
-    flex-wrap: wrap;
-    min-height: 0;
-    max-height: 40%;
-    overflow: hidden;
-    position: relative;
-    /* For fullscreen positioning */
-    background-color: #333;
-    /* Default background when no video */
-    border-radius: 8px;
-  }
-
-  .video-container.fullscreen {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;
-    max-height: 100vh;
-    z-index: 999;
-    /* Above other content */
-    background-color: black;
-    display: flex;
-    flex-direction: column;
-    /* Stack videos vertically in fullscreen */
-    justify-content: center;
-    align-items: center;
-    padding: 0;
-    border-radius: 0;
-  }
-
-  .video-wrapper {
-    position: relative;
-    width: 100%;
-    max-width: 400px;
-    aspect-ratio: 16 / 9;
-    background-color: #333;
-    border-radius: 8px;
-    overflow: hidden;
-    display: none;
-  }
-
-  .video-container.fullscreen .video-wrapper {
-    max-width: 90vw;
-    /* Adjust max width in fullscreen */
-    max-height: 45vh;
-    /* Distribute height for two videos */
-    margin: 5px;
-    /* Small margin between videos */
-  }
-
-  .video-wrapper.active {
-    display: block;
-  }
-
-  /* video elements: do not mirror by default; apply mirror only to local video */
-  .video-wrapper video {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    /* fill area on mobile better */
-    border-radius: 8px;
-  }
-
-  /* Mirror only local preview so user sees themselves naturally */
-  #local-video {
-    transform: scaleX(-1);
-  }
-
-  .video-label {
-    position: absolute;
-    bottom: 5px;
-    left: 5px;
-    background-color: rgba(0, 0, 0, 0.5);
-    color: white;
-    padding: 3px 8px;
-    border-radius: 4px;
-    font-size: 0.9em;
-    font-weight: 600;
-  }
-
-  /* Video Controls Overlay */
-  .video-controls-overlay {
-    position: absolute;
-    bottom: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    background-color: rgba(0, 0, 0, 0.6);
-    border-radius: 15px;
-    padding: 8px 15px;
-    display: none;
-    /* start hidden and shown by JS when a call is active */
-    gap: 10px;
-    z-index: 100;
-  }
-
-  .video-controls-overlay button {
-    background: none;
-    border: none;
-    color: white;
-    font-size: 1.1em;
-    cursor: pointer;
-    padding: 8px;
-    transition: color 0.2s ease;
-  }
-
-  .video-controls-overlay button:hover {
-    color: #4CAF50;
-  }
-
-  .video-controls-overlay button.active {
-    color: #f44336;
-    /* Muted/active state */
-  }
-
-  /* Messages display area */
-  .messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 6px 0 70px 0;
-}
-
-  /* Individual message bubble */
-  .text {
-  margin: 4px 0;
-  padding: 8px 10px;
-  border-radius: 14px;
-  font-size: 14px;
-  line-height: 1.35;
-  width: 100%;
-  box-sizing: border-box;
-  color: black;
-  word-break: break-word;
-}
-.text strong {
-  white-space: nowrap;
-  display: inline;
-  margin-right: 6px;
-}
-.text span {
-  word-break: break-word;
-}
-
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
+    html,
+    body {
+        margin: 0 !important;
+        padding: 0 !important;
+        height: 100%;
+        background: var(--bg-color, #ece6fa);
+        color: var(--text-color, black);
+        font-family: Arial, sans-serif;
+        transition:
+            background 0.3s,
+            color 0.3s;
+        overflow: hidden;
     }
 
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-
-  /* ensure send input sizes adapt */
-  #message {
-    flex: 1;
-    min-width: 0;
-  }
-
-  /* add a buffer so messages are not hidden under the fixed inputs */
-
-
-  .inputs-container.focused {
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-    transform: translateY(-6px);
-  }
-
-  /* Message input field */
-  #message {
-  flex: 1;
-  padding: 10px 12px;
-  border-radius: 20px;
-  border: none;
-  outline: none;
-  background: rgba(255,255,255,0.9);
-  font-size: 14px;
-  max-height: 42px;
-}
-
-  /* Send button */
-  #send-btn {
-  padding: 9px 14px;
-  border-radius: 8px;
-  font-size: 14px;
-  background: #ff416c;
-  color: white;
-  border: none;
-  font-weight: 600;
-}
-
-  #send-btn:hover {
-    background: #ff4b2b;
-  }
-
-  /* Typing indicator text */
-  .typing {
-    font-size: 0.95em;
-    color: #333;
-    padding-left: 4px;
-    margin-top: 5px;
-    min-height: 1.2em;
-  }
-
-  /* Dark Mode Toggle, Leave, and Video Call buttons */
-  .dark-mode-toggle,
-.leave-btn,
-.video-call-btn,
-.xox-game-btn {
-  padding: 6px 10px;
-  border-radius: 6px;
-  font-size: 13px;
-  cursor: pointer;
-  border: none;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.12);
-}
-
-  .dark-mode-toggle {
-    background: #222;
-    color: white;
-  }
-
-  .leave-btn {
-    background: crimson;
-    color: white;
-  }
-  .leave-top {
-  position: absolute;
-  right: 10px;
-  top: 10px;
-}
-
-  .video-call-btn {
-    background: #4CAF50;
-    color: white;
-  }
-
-  .video-call-btn.hangup {
-    background: #f44336;
-  }
-
-  .video-call-btn:hover,
-  .xox-game-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
-  }
-
-  .video-call-btn:disabled,
-  .xox-game-btn:disabled {
-    background-color: #cccccc;
-    cursor: not-allowed;
-    box-shadow: none;
-    transform: none;
-  }
-
-  /* XOX Game Specific Styles */
-  .xox-game-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    margin-bottom: 10px;
-    padding: 10px;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(2px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    width: fit-content;
-    margin-left: auto;
-    margin-right: auto;
-    display: none;
-  }
-
-  .xox-game-container.active {
-    display: flex;
-  }
-
-  #xox-board {
-    display: grid;
-    grid-template-columns: repeat(3, 80px);
-    grid-template-rows: repeat(3, 80px);
-    gap: 5px;
-    background-color: #333;
-    border: 5px solid #333;
-    border-radius: 5px;
-    margin: 10px 0;
-  }
-
-  .xox-cell {
-    width: 80px;
-    height: 80px;
-    background-color: #eee;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    font-size: 3em;
-    font-weight: bold;
-    cursor: pointer;
-    border-radius: 3px;
-    transition: background-color 0.2s ease;
-    color: black;
-  }
-
-  .xox-cell:hover {
-    background-color: #ddd;
-  }
-
-  .xox-cell.x {
-    color: #ff416c;
-  }
-
-  .xox-cell.o {
-    color: #4CAF50;
-  }
-
-  .xox-cell.winning-cell {
-    background-color: #ffd700;
-  }
-
-  #xox-status {
-    font-size: 1.1em;
-    margin-bottom: 10px;
-    font-weight: bold;
-    color: var(--text-color, black);
-  }
-
-  #xox-start-btn,
-  #xox-reset-btn {
-    padding: 10px 15px;
-    font-size: 1em;
-    border-radius: 5px;
-    border: none;
-    cursor: pointer;
-    background-color: #007bff;
-    color: white;
-    margin-top: 10px;
-    display: none;
-  }
-
-  #xox-start-btn:disabled,
-  #xox-reset-btn:disabled {
-    background-color: #cccccc;
-    cursor: not-allowed;
-  }
-
-  #xox-reset-btn {
-    background-color: #6c757d;
-  }
-
-  /* Message box for alerts/confirmations */
-  .message-box-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.7);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1000;
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.3s ease;
-  }
-
-  .message-box-overlay.show {
-    opacity: 1;
-    visibility: visible;
-  }
-
-  .message-box {
-    background: white;
-    padding: 25px;
-    border-radius: 10px;
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-    text-align: center;
-    max-width: 400px;
-    width: 90%;
-    color: black;
-  }
-
-  .message-box p {
-    margin-bottom: 20px;
-    font-size: 1.2em;
-  }
-
-  .message-box button {
-    padding: 10px 20px;
-    margin: 0 10px;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 1em;
-    transition: background 0.2s ease;
-  }
-
-  .message-box button.confirm-btn {
-    background: #4CAF50;
-    color: white;
-  }
-
-  .message-box button.confirm-btn:hover {
-    background: #45a049;
-  }
-
-  .message-box button.cancel-btn {
-    background: #f44336;
-    color: white;
-  }
-
-  .message-box button.cancel-btn:hover {
-    background: #da190b;
-  }
-
-  /* User Selection Modal (for multi-person call) */
-  .user-selection-modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.7);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1001;
-    /* Above message box */
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.3s ease;
-  }
-
-  .user-selection-modal-overlay.show {
-    opacity: 1;
-    visibility: visible;
-  }
-
-  .user-selection-modal {
-    background: white;
-    padding: 25px;
-    border-radius: 10px;
-    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-    text-align: center;
-    max-width: 400px;
-    width: 90%;
-    color: black;
-  }
-
-  .user-selection-modal h3 {
-    margin-top: 0;
-    margin-bottom: 20px;
-    color: #4a2a82;
-  }
-
-  .user-selection-list {
-    max-height: 200px;
-    overflow-y: auto;
-    border: 1px solid #eee;
-    border-radius: 5px;
-    padding: 10px;
-    margin-bottom: 20px;
-    text-align: left;
-  }
-
-  .user-selection-list label {
-    display: block;
-    margin-bottom: 8px;
-    font-size: 1.1em;
-    cursor: pointer;
-  }
-
-  .user-selection-list input[type="checkbox"] {
-    margin-right: 10px;
-  }
-
-  .user-selection-modal .modal-buttons {
-    display: flex;
-    justify-content: center;
-    gap: 15px;
-  }
-
-  .user-selection-modal .modal-buttons button {
-    padding: 10px 20px;
-    border-radius: 5px;
-    font-size: 1em;
-  }
-
-  /* Mobile-specific adjustments */
-  @media (max-width: 600px) {
+    /* Main flex container for the entire chat interface */
     .chat-container {
-      padding: 15px 10px;
+        display: flex;
+        flex-direction: column;
+        height: var(--app-height);
+        overflow: hidden;
+        width: 100vw;
+        background: linear-gradient(135deg, #ece6fa, #ece6fa);
+        padding: 10px;
+        box-sizing: border-box;
     }
 
+    /* Controls at the top (Room Code, Users, Buttons) */
     .controls {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
 }
+ /* ROOM ROW — FORCE LEFT ALIGN */
+.room-row {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    text-align: left;
+}
+
+    .controls-left {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .controls-right {
+    position: absolute;
+    top: 0;
+    right: 0;
+    display: flex;
+    gap: 8px;
+    }
+
+    .controls-right button {
+    height: 20px;
+    padding: 0 10px;
+    border-radius: 50px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    top: 0;
+    right: 0;
+    justify-content: flex-end;
+}
+
+    .controls > div {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+    }
+
+    /* Video container for local and remote streams */
+    .video-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 10px;
+        flex-wrap: wrap;
+        min-height: 0;
+        max-height: 40%;
+        overflow: hidden;
+        position: relative;
+        /* For fullscreen positioning */
+        background-color: #333;
+        /* Default background when no video */
+        border-radius: 8px;
+    }
+
+    .video-container.fullscreen {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        max-height: 100vh;
+        z-index: 999;
+        /* Above other content */
+        background-color: black;
+        display: flex;
+        flex-direction: column;
+        /* Stack videos vertically in fullscreen */
+        justify-content: center;
+        align-items: center;
+        padding: 0;
+        border-radius: 0;
+    }
 
     .video-wrapper {
-      max-width: 100%;
+        position: relative;
+        width: 100%;
+        max-width: 400px;
+        aspect-ratio: 16 / 9;
+        background-color: #333;
+        border-radius: 8px;
+        overflow: hidden;
+        display: none;
+    }
+
+    .video-container.fullscreen .video-wrapper {
+        max-width: 90vw;
+        /* Adjust max width in fullscreen */
+        max-height: 45vh;
+        /* Distribute height for two videos */
+        margin: 5px;
+        /* Small margin between videos */
+    }
+
+    .video-wrapper.active {
+        display: block;
+    }
+
+    /* video elements: do not mirror by default; apply mirror only to local video */
+    .video-wrapper video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        /* fill area on mobile better */
+        border-radius: 8px;
+    }
+
+    /* Mirror only local preview so user sees themselves naturally */
+    #local-video {
+        transform: scaleX(-1);
+    }
+
+    .video-label {
+        position: absolute;
+        bottom: 5px;
+        left: 5px;
+        background-color: rgba(0, 0, 0, 0.5);
+        color: white;
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-size: 0.9em;
+        font-weight: 600;
+    }
+
+    /* Video Controls Overlay */
+    .video-controls-overlay {
+        position: absolute;
+        bottom: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: rgba(0, 0, 0, 0.6);
+        border-radius: 15px;
+        padding: 8px 15px;
+        display: none;
+        /* start hidden and shown by JS when a call is active */
+        gap: 10px;
+        z-index: 100;
+    }
+
+    .video-controls-overlay button {
+        background: none;
+        border: none;
+        color: white;
+        font-size: 1.1em;
+        cursor: pointer;
+        padding: 8px;
+        transition: color 0.2s ease;
+    }
+
+    .video-controls-overlay button:hover {
+        color: #4caf50;
+    }
+
+    .video-controls-overlay button.active {
+        color: #f44336;
+        /* Muted/active state */
+    }
+
+    /* Messages display area */
+    .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 0 70px 0;
+    margin-top: -2px;
+}
+
+    .text:first-child {
+    margin-top: 2px;
+}
+
+    /* Individual message bubble */
+    .text {
+        margin: 4px 0;
+        padding: 8px 10px;
+        border-radius: 14px;
+        display: flex;
+        align-items: flex-start;
+        font-size: 14px;
+        line-height: 1.35;
+        width: 100%;
+        box-sizing: border-box;
+        color: black;
+        word-break: break-word;
+    }
+    .text strong {
+    white-space: nowrap;
+    display: inline-block;
+    margin-right: 6px;
+    flex-shrink: 0;
+}
+    .text span {
+        word-break: break-word;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    #room-code:active {
+        transform: scale(0.95);
+    }
+
+    /* ensure send input sizes adapt */
+    #message {
+        flex: 1;
+        min-width: 0;
+    }
+
+    /* add a buffer so messages are not hidden under the fixed inputs */
+
+    .inputs-container.focused {
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        transform: translateY(-6px);
+    }
+
+    /* Message input field */
+    #message {
+    flex: 1;
+    padding: 10px 12px;
+    border-radius: 20px;
+    border: none;
+    outline: none;
+    background: rgba(255, 255, 255, 0.9);
+    font-size: 14px;
+    max-height: 42px;
+    color: black;              /* ✅ typing always visible */
+    caret-color: black;        /* ✅ cursor visible */
+}
+
+    /* Send button */
+    #send-btn {
+        padding: 9px 14px;
+        border-radius: 8px;
+        font-size: 14px;
+        background: #ff416c;
+        color: white;
+        border: none;
+        font-weight: 600;
+    }
+
+    #send-btn:hover {
+        background: #ff4b2b;
+    }
+
+    /* Typing indicator text */
+    .typing {
+        font-size: 0.95em;
+        color: #333;
+        padding-left: 4px;
+        margin-top: 5px;
+        min-height: 1.2em;
+    }
+
+    /* Dark Mode Toggle, Leave, and Video Call buttons */
+    .dark-mode-toggle,
+    .leave-btn,
+    .video-call-btn,
+    .xox-game-btn {
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-size: 13px;
+        cursor: pointer;
+        border: none;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+    }
+
+    .dark-mode-toggle {
+        background: #222;
+        color: white;
+    }
+
+    .leave-btn {
+        background: crimson;
+        color: white;
+    }
+    .leave-top {
+        position: absolute;
+        right: 10px;
+        top: 10px;
+    }
+
+    .video-call-btn {
+        background: #4caf50;
+        color: white;
+    }
+
+    .video-call-btn.hangup {
+        background: #f44336;
+    }
+
+    .video-call-btn:hover,
+    .xox-game-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .video-call-btn:disabled,
+    .xox-game-btn:disabled {
+        background-color: #cccccc;
+        cursor: not-allowed;
+        box-shadow: none;
+        transform: none;
+    }
+
+    /* XOX Game Specific Styles */
+    .xox-game-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-bottom: 10px;
+        padding: 10px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        width: fit-content;
+        margin-left: auto;
+        margin-right: auto;
+        display: none;
+    }
+
+    .xox-game-container.active {
+        display: flex;
     }
 
     #xox-board {
-      grid-template-columns: repeat(3, 70px);
-      grid-template-rows: repeat(3, 70px);
+        display: grid;
+        grid-template-columns: repeat(3, 80px);
+        grid-template-rows: repeat(3, 80px);
+        gap: 5px;
+        background-color: #333;
+        border: 5px solid #333;
+        border-radius: 5px;
+        margin: 10px 0;
     }
-
+    .video-row {
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
+}
     .xox-cell {
-      width: 70px;
-      height: 70px;
-      font-size: 2.5em;
+        width: 80px;
+        height: 80px;
+        background-color: #eee;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-size: 3em;
+        font-weight: bold;
+        cursor: pointer;
+        border-radius: 3px;
+        transition: background-color 0.2s ease;
+        color: black;
     }
-    input, textarea {
-      font-size: 14px;
+
+    .xox-cell:hover {
+        background-color: #ddd;
     }
-  }
 
-/* ===== FINAL MOBILE CHAT LAYOUT FIX ===== */
-html, body {
-  height: 100%;
-  overflow: hidden;
+    .xox-cell.x {
+        color: #ff416c;
+    }
+
+    .xox-cell.o {
+        color: #4caf50;
+    }
+
+    .xox-cell.winning-cell {
+        background-color: #ffd700;
+    }
+    #room-code {
+        cursor: pointer;
+        font-weight: bold;
+    }
+    #xox-status {
+        font-size: 1.1em;
+        margin-bottom: 10px;
+        font-weight: bold;
+        color: var(--text-color, black);
+    }
+
+    #xox-start-btn,
+    #xox-reset-btn {
+        padding: 10px 15px;
+        font-size: 1em;
+        border-radius: 5px;
+        border: none;
+        cursor: pointer;
+        background-color: #007bff;
+        color: white;
+        margin-top: 10px;
+        display: none;
+    }
+
+    #xox-start-btn:disabled,
+    #xox-reset-btn:disabled {
+        background-color: #cccccc;
+        cursor: not-allowed;
+    }
+
+    #xox-reset-btn {
+        background-color: #6c757d;
+    }
+
+    /* Message box for alerts/confirmations */
+    .message-box-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.3s ease;
+    }
+
+    .message-box-overlay.show {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    .message-box {
+        background: white;
+        padding: 25px;
+        border-radius: 10px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        text-align: center;
+        max-width: 400px;
+        width: 90%;
+        color: black;
+    }
+
+    .message-box p {
+        margin-bottom: 20px;
+        font-size: 1.2em;
+    }
+
+    .message-box button {
+        padding: 10px 20px;
+        margin: 0 10px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 1em;
+        transition: background 0.2s ease;
+    }
+
+    .message-box button.confirm-btn {
+        background: #4caf50;
+        color: white;
+    }
+
+    .message-box button.confirm-btn:hover {
+        background: #45a049;
+    }
+
+    .message-box button.cancel-btn {
+        background: #f44336;
+        color: white;
+    }
+
+    .message-box button.cancel-btn:hover {
+        background: #da190b;
+    }
+
+    /* User Selection Modal (for multi-person call) */
+    .user-selection-modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1001;
+        /* Above message box */
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.3s ease;
+    }
+
+    .user-selection-modal-overlay.show {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    .user-selection-modal {
+        background: white;
+        padding: 25px;
+        border-radius: 10px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        text-align: center;
+        max-width: 400px;
+        width: 90%;
+        color: black;
+    }
+
+    .user-selection-modal h3 {
+        margin-top: 0;
+        margin-bottom: 20px;
+        color: #4a2a82;
+    }
+
+    .user-selection-list {
+        max-height: 200px;
+        overflow-y: auto;
+        border: 1px solid #eee;
+        border-radius: 5px;
+        padding: 10px;
+        margin-bottom: 20px;
+        text-align: left;
+    }
+
+    .user-selection-list label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 1.1em;
+        cursor: pointer;
+    }
+
+    .user-selection-list input[type="checkbox"] {
+        margin-right: 10px;
+    }
+
+    .user-selection-modal .modal-buttons {
+        display: flex;
+        justify-content: center;
+        gap: 15px;
+    }
+
+    .user-selection-modal .modal-buttons button {
+        padding: 10px 20px;
+        border-radius: 5px;
+        font-size: 1em;
+    }
+    .login-name {
+        width: 100%;
+        text-align: left;
+        margin-top: 2px;
+        font-weight: 600;
+    }
+    /* LOGIN ROW ALIGNMENT */
+.login-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 10px;
 }
 
-.chat-container {
-  display: flex;
-  flex-direction: column;
-  height: 100dvh; /* modern dynamic viewport */
+/* name takes remaining space */
+.login-name {
+    flex: 1;
+    min-width: 0;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-
-.inputs-container {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px;
-  background: #ffffffee;
-  backdrop-filter: blur(10px);
-  border-top: 1px solid rgba(0,0,0,0.08);
-  z-index: 999;
+/* button NEVER moves */
+.video-call-btn {
+    flex-shrink: 0;
+    width: 170px;
 }
+    /* Mobile-specific adjustments */
+    @media (max-width: 600px) {
+        .chat-container {
+            padding: 6px 8px 10px 8px;
+        }
 
-.inputs-container input {
-  font-size: 14px;
-  padding: 10px;
-}
+        .controls {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            margin: 0;
+        }
 
-.message {
-  font-size: 14px;
-}
+        .video-wrapper {
+            max-width: 100%;
+        }
 
+        #xox-board {
+            grid-template-columns: repeat(3, 70px);
+            grid-template-rows: repeat(3, 70px);
+        }
+
+        .xox-cell {
+            width: 70px;
+            height: 70px;
+            font-size: 2.5em;
+        }
+        input,
+        textarea {
+            font-size: 14px;
+        }
+    }
+
+    /* ===== FINAL MOBILE CHAT LAYOUT FIX ===== */
+    html,
+    body {
+        height: 100%;
+        overflow: hidden;
+    }
+
+    .chat-container {
+        display: flex;
+        flex-direction: column;
+        height: 100dvh; /* modern dynamic viewport */
+    }
+
+    .inputs-container {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px;
+        background: #ffffffee;
+        backdrop-filter: blur(10px);
+        border-top: 1px solid rgba(0, 0, 0, 0.08);
+        z-index: 999;
+    }
+
+    .inputs-container input {
+        font-size: 14px;
+        padding: 10px;
+    }
+
+    .message {
+        font-size: 14px;
+    }
 </style>
 
 <div class="chat-container">
-  <div class="controls">
+    <div class="controls">
+        <div class="controls-left">
+            <div class="room-row">
+                <strong>Room Code:</strong>
+                <span id="room-code">{{ code | e }}</span>
+                &nbsp;|&nbsp;
+                <strong>Users:</strong> <span id="user-count">1</span>
+            </div>
 
-  <div class="controls-left">
-    <div>
-      <strong>Room Code:</strong> {{ code | e }} |
-      <strong>Users:</strong> <span id="user-count">1</span>
+            <div class="login-row">
+                <div class="login-name">
+                    Log Name:
+                    <span id="login-name-text">{{ name | e }}</span>
+                </div>
+
+                <button class="video-call-btn" id="video-call-btn" onclick="toggleVideoCall()">
+                    📞 Start Video Call
+                </button>
+            </div>
+        </div>
+
+        <!-- TOP RIGHT ICONS -->
+        <div class="controls-right">
+            <button class="dark-mode-toggle" onclick="toggleDarkMode()">💡</button>
+            <button class="leave-btn" onclick="leaveRoom()">🚪</button>
+        </div>
     </div>
 
-    <div class="login-name">
-      Log Name: {{ name | e }}
+    <div class="video-container" id="video-container">
+        <div class="video-wrapper" id="local-video-wrapper">
+            <video id="local-video" autoplay muted playsinline></video>
+            <span class="video-label">You</span>
+        </div>
+        <div class="video-wrapper" id="remote-video-wrapper">
+            <video id="remote-video" autoplay playsinline></video>
+            <span class="video-label">Them</span>
+        </div>
+        <div class="video-controls-overlay">
+            <button id="mute-toggle-btn" onclick="toggleMute()">Mute 🔇</button>
+            <button id="camera-switch-btn" onclick="switchCamera()">Reverse🔄</button>
+            <button id="fullscreen-toggle-btn" onclick="toggleFullscreen()">expand Video 📷</button>
+        </div>
     </div>
-
-    <div class="action-buttons">
-      <button class="video-call-btn" id="video-call-btn" onclick="toggleVideoCall()">📞 Start Video Call</button>
-      <button class="xox-game-btn" id="xox-game-btn" onclick="toggleXOXVisibility()" disabled>Play XOX</button>
+    <!-- XOX Game Section -->
+    <div class="xox-game-container" id="xox-game-container">
+        <h3 id="xox-status">Waiting for game to start...</h3>
+        <div id="xox-board">
+            <div class="xox-cell" data-index="0"></div>
+            <div class="xox-cell" data-index="1"></div>
+            <div class="xox-cell" data-index="2"></div>
+            <div class="xox-cell" data-index="3"></div>
+            <div class="xox-cell" data-index="4"></div>
+            <div class="xox-cell" data-index="5"></div>
+            <div class="xox-cell" data-index="6"></div>
+            <div class="xox-cell" data-index="7"></div>
+            <div class="xox-cell" data-index="8"></div>
+        </div>
+        <button id="xox-start-btn" onclick="startGame()">Start New XOX Game</button>
+        <button id="xox-reset-btn" onclick="resetGame()" style="display: none">Reset XOX Game</button>
     </div>
-  </div>
+    <!-- End XOX Game Section -->
 
-  <!-- TOP RIGHT ICONS -->
-  <div class="controls-right">
-      <button class="dark-mode-toggle" onclick="toggleDarkMode()">💡</button>
-      <button class="leave-btn" onclick="leaveRoom()">🚪</button>
-  </div>
+    <div class="messages" id="messages" aria-live="polite"></div>
+    <div class="typing" id="typing-indicator" aria-atomic="true"></div>
 
-</div>
-
-  <div class="video-container" id="video-container">
-    <div class="video-wrapper" id="local-video-wrapper">
-      <video id="local-video" autoplay muted playsinline></video>
-      <span class="video-label">You</span>
+    <div class="inputs-container" id="inputs-container" role="region" aria-label="Message input">
+        <input
+            type="text"
+            placeholder="Message"
+            id="message"
+            onkeypress="handleKeyPress(event)"
+            oninput="notifyTyping()"
+            autocomplete="off"
+        />
+        <button id="send-btn" onClick="sendMessage()" aria-label="Send message">Send</button>
     </div>
-    <div class="video-wrapper" id="remote-video-wrapper">
-      <video id="remote-video" autoplay playsinline></video>
-      <span class="video-label">Them</span>
-    </div>
-    <div class="video-controls-overlay">
-      <button id="mute-toggle-btn" onclick="toggleMute()">Mute 🔇</button>
-      <button id="camera-switch-btn" onclick="switchCamera()"> Reverse🔄</button>
-      <button id="fullscreen-toggle-btn" onclick="toggleFullscreen()"> expand Video 📷 </button>
-    </div>
-  </div>
-  <!-- XOX Game Section -->
-  <div class="xox-game-container" id="xox-game-container">
-    <h3 id="xox-status">Waiting for game to start...</h3>
-    <div id="xox-board">
-      <div class="xox-cell" data-index="0"></div>
-      <div class="xox-cell" data-index="1"></div>
-      <div class="xox-cell" data-index="2"></div>
-      <div class="xox-cell" data-index="3"></div>
-      <div class="xox-cell" data-index="4"></div>
-      <div class="xox-cell" data-index="5"></div>
-      <div class="xox-cell" data-index="6"></div>
-      <div class="xox-cell" data-index="7"></div>
-      <div class="xox-cell" data-index="8"></div>
-    </div>
-    <button id="xox-start-btn" onclick="startGame()">Start New XOX Game</button>
-    <button id="xox-reset-btn" onclick="resetGame()" style="display: none;">Reset XOX Game</button>
-  </div>
-  <!-- End XOX Game Section -->
-
-  <div class="messages" id="messages" aria-live="polite"></div>
-  <div class="typing" id="typing-indicator" aria-atomic="true"></div>
-
-  <div class="inputs-container" id="inputs-container" role="region" aria-label="Message input">
-    <input type="text" placeholder="Message" id="message" onkeypress="handleKeyPress(event)" oninput="notifyTyping()" autocomplete="off" />
-    <button id="send-btn" onClick="sendMessage()" aria-label="Send message">Send</button>
-
-  </div>
 </div>
 
 <!-- Custom Message Box for alerts/confirmations -->
 <div class="message-box-overlay" id="message-box-overlay" aria-hidden="true">
-  <div class="message-box" id="message-box">
-    <p id="message-box-text"></p>
-    <div id="message-box-buttons">
-      <button class="confirm-btn" id="message-box-confirm">OK</button>
-      <button class="cancel-btn" id="message-box-cancel">Cancel</button>
+    <div class="message-box" id="message-box">
+        <p id="message-box-text"></p>
+        <div id="message-box-buttons">
+            <button class="confirm-btn" id="message-box-confirm">OK</button>
+            <button class="cancel-btn" id="message-box-cancel">Cancel</button>
+        </div>
     </div>
-  </div>
 </div>
 
 <!-- User Selection Modal for Video Call -->
 <div class="user-selection-modal-overlay" id="user-selection-modal-overlay" aria-hidden="true">
-  <div class="user-selection-modal">
-    <h3>Select Users for Video Call</h3>
-    <div class="user-selection-list" id="user-selection-list">
-      <!-- Users will be dynamically inserted here -->
+    <div class="user-selection-modal">
+        <h3>Select Users for Video Call</h3>
+        <div class="user-selection-list" id="user-selection-list">
+            <!-- Users will be dynamically inserted here -->
+        </div>
+        <div class="modal-buttons">
+            <button class="confirm-btn" id="select-users-confirm">Start Call</button>
+            <button class="cancel-btn" id="select-users-cancel">Cancel</button>
+        </div>
     </div>
-    <div class="modal-buttons">
-      <button class="confirm-btn" id="select-users-confirm">Start Call</button>
-      <button class="cancel-btn" id="select-users-cancel">Cancel</button>
-    </div>
-  </div>
 </div>
 
-
 <script type="text/javascript">
+/* ===== SHORTEN LONG LOGIN NAME ===== */
+document.addEventListener("DOMContentLoaded", () => {
+    const nameEl = document.getElementById("login-name-text");
+    if (!nameEl) return;
 
-/* ===== MOBILE VIEWPORT FIX ===== */
-function setAppHeight() {
-  const vh = window.visualViewport
-      ? window.visualViewport.height
-      : window.innerHeight;
+    const fullName = nameEl.innerText.trim();
 
-  document.documentElement.style.setProperty('--app-height', `${vh}px`);
-}
-
-setAppHeight();
-window.addEventListener('resize', setAppHeight);
-if (window.visualViewport) {
-  window.visualViewport.addEventListener('resize', setAppHeight);
-}
-
-  const socketio = io({
-  transports: ["websocket"],
-  upgrade: true
-});
-  const messages = document.getElementById("messages");
-  const messageInput = document.getElementById("message");
-  const typingIndicator = document.getElementById("typing-indicator");
-  const chatContainer = document.querySelector('.chat-container');
-  const controls = document.querySelector('.controls');
-  const inputsContainer = document.getElementById('inputs-container');
-  if (window.visualViewport) {
-  window.visualViewport.addEventListener("resize", () => {
-    const offset =
-      window.innerHeight - window.visualViewport.height;
-
-    inputsContainer.style.transform =
-      offset > 150 ? `translateY(-${offset}px)` : "translateY(0)";
-  });
-}
-  const mode = "{{ mode }}"; // Injected by Flask (privacy/fullchat)
-
-  const videoCallBtn = document.getElementById("video-call-btn");
-  const localVideo = document.getElementById("local-video");
-  const remoteVideo = document.getElementById("remote-video");
-  const localVideoWrapper = document.getElementById("local-video-wrapper");
-  const remoteVideoWrapper = document.getElementById("remote-video-wrapper");
-  const videoContainer = document.getElementById("video-container"); // New reference for fullscreen
-
-  const muteToggleButton = document.getElementById("mute-toggle-btn");
-  const cameraSwitchButton = document.getElementById("camera-switch-btn");
-  const fullscreenToggleButton = document.getElementById("fullscreen-toggle-btn");
-
-  let typingTimeout;
-
-  // WebRTC variables
-  let localStream;
-  let peerConnection;
-  let isCalling = false; // Flag to indicate if a call is active or being initiated
-  let isInitiator = false; // Flag to determine who creates the offer
-  let remoteRequesterSid = null; // Store the SID of the person who initiated the call to you
-  let currentCameraDeviceId = null; // To keep track of the active camera
-
-  // Store online users for selection modal
-  let onlineUsers = [];
-  let callRequestInProgress = false; // only true when user explicitly requests a call (prevents auto messages)
-
-  // STUN servers (publicly available)
-  const iceServers = {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' },
-    ]
-  };
-
-  // --- Custom Message Box Functions ---
-  const showMessageBox = (message, type = 'alert', onConfirm = null, onCancel = null) => {
-    const overlay = document.getElementById('message-box-overlay');
-    const messageText = document.getElementById('message-box-text');
-    const confirmBtn = document.getElementById('message-box-confirm');
-    const cancelBtn = document.getElementById('message-box-cancel');
-
-    messageText.innerText = message;
-
-    confirmBtn.onclick = null;
-    cancelBtn.onclick = null;
-
-    if (type === 'confirm') {
-      cancelBtn.style.display = 'inline-block';
-      confirmBtn.innerText = 'Accept';
-      confirmBtn.onclick = () => {
-        overlay.classList.remove('show');
-        overlay.setAttribute('aria-hidden', 'true');
-        if (onConfirm) onConfirm();
-      };
-      cancelBtn.onclick = () => {
-        overlay.classList.remove('show');
-        overlay.setAttribute('aria-hidden', 'true');
-        if (onCancel) onCancel();
-      };
-    } else { // 'alert' type
-      cancelBtn.style.display = 'none';
-      confirmBtn.innerText = 'OK';
-      confirmBtn.onclick = () => {
-        overlay.classList.remove('show');
-        overlay.setAttribute('aria-hidden', 'true');
-        if (onConfirm) onConfirm();
-      };
+    if (fullName.length > 14) {
+        nameEl.innerText = fullName.substring(0, 11) + "...";
+        nameEl.title = fullName; // hover shows full name
     }
-    overlay.setAttribute('aria-hidden', 'false');
-    overlay.classList.add('show');
-  };
+});
+    /* ===== MOBILE VIEWPORT FIX ===== */
+    function setAppHeight() {
+        const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
 
-  // --- User Selection Modal Functions ---
-  const userSelectionModalOverlay = document.getElementById('user-selection-modal-overlay');
-  const userSelectionList = document.getElementById('user-selection-list');
-  const selectUsersConfirmBtn = document.getElementById('select-users-confirm');
-  const selectUsersCancelBtn = document.getElementById('select-users-cancel');
+        document.documentElement.style.setProperty("--app-height", `${vh}px`);
+    }
 
-  const showUserSelectionModal = (users) => {
-    userSelectionList.innerHTML = ''; // Clear previous list
-    users.forEach(user => {
-      const label = document.createElement('label');
-      label.innerHTML = `<input type="checkbox" value="${user.sid}" data-name="${user.name}"> ${user.name}`;
-      userSelectionList.appendChild(label);
+    setAppHeight();
+    window.addEventListener("resize", setAppHeight);
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener("resize", setAppHeight);
+    }
+
+    const socketio = io({
+        transports: ["websocket"],
+        upgrade: true,
     });
-    userSelectionModalOverlay.classList.add('show');
-    userSelectionModalOverlay.setAttribute('aria-hidden', 'false');
-  };
+    const messages = document.getElementById("messages");
+    const messageInput = document.getElementById("message");
+    const typingIndicator = document.getElementById("typing-indicator");
+    const chatContainer = document.querySelector(".chat-container");
+    const controls = document.querySelector(".controls");
+    const inputsContainer = document.getElementById("inputs-container");
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener("resize", () => {
+            const offset = window.innerHeight - window.visualViewport.height;
 
-  const hideUserSelectionModal = () => {
-    userSelectionModalOverlay.classList.remove('show');
-    userSelectionModalOverlay.setAttribute('aria-hidden', 'true');
-  };
-
-  selectUsersConfirmBtn.onclick = () => {
-    const selectedSids = Array.from(userSelectionList.querySelectorAll('input[type="checkbox"]:checked'))
-                               .map(checkbox => checkbox.value);
-
-    if (selectedSids.length === 0) {
-      showMessageBox("Please select at least one person to call.", 'alert');
-      return;
+            inputsContainer.style.transform = offset > 150 ? `translateY(-${offset}px)` : "translateY(0)";
+        });
     }
+    const mode = "{{ mode }}"; // Injected by Flask (privacy/fullchat)
 
-    if (selectedSids.length > 1) {
-        showMessageBox("For now, you can only select one person for a video call. Please choose one.", 'alert');
-        return;
-    }
+    const videoCallBtn = document.getElementById("video-call-btn");
+    const localVideo = document.getElementById("local-video");
+    const remoteVideo = document.getElementById("remote-video");
+    const localVideoWrapper = document.getElementById("local-video-wrapper");
+    const remoteVideoWrapper = document.getElementById("remote-video-wrapper");
+    const videoContainer = document.getElementById("video-container"); // New reference for fullscreen
 
-    hideUserSelectionModal();
-    // For simplicity, we'll only initiate a call with the first selected user
-    // True multi-party calls require a more complex WebRTC architecture (SFU/MCU)
-    initiateCallWithSelectedUser(selectedSids[0]);
-  };
+    const muteToggleButton = document.getElementById("mute-toggle-btn");
+    const cameraSwitchButton = document.getElementById("camera-switch-btn");
+    const fullscreenToggleButton = document.getElementById("fullscreen-toggle-btn");
 
-  selectUsersCancelBtn.onclick = () => {
-    hideUserSelectionModal();
-    videoCallBtn.innerText = "📞 Start Video Call"; // Reset button text
-    videoCallBtn.classList.remove("hangup");
-    videoCallBtn.disabled = false; // Re-enable button
-  };
+    let typingTimeout;
 
-  // Function to create and append message elements with dynamic colors
-  const createMessage = (name, msg, color) => {
-  const content = document.createElement("div");
-  content.classList.add("text");
-  content.style.backgroundColor = color || 'rgba(255,255,255,0.6)';
-  content.style.color = "black";
+    // WebRTC variables
+    let localStream;
+    let peerConnection;
+    let isCalling = false; // Flag to indicate if a call is active or being initiated
+    let isInitiator = false; // Flag to determine who creates the offer
+    let remoteRequesterSid = null; // Store the SID of the person who initiated the call to you
+    let currentCameraDeviceId = null; // To keep track of the active camera
 
-  const strong = document.createElement("strong");
-  strong.textContent = name;   // SAFE
+    // Store online users for selection modal
+    let onlineUsers = [];
+    let callRequestInProgress = false; // only true when user explicitly requests a call (prevents auto messages)
 
-  const text = document.createElement("span");
-  text.textContent = `: ${msg}`; // SAFE
+    // STUN servers (publicly available)
+    const iceServers = {
+        iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" },
+            { urls: "stun:stun2.l.google.com:19302" },
+            { urls: "stun:stun3.l.google.com:19302" },
+            { urls: "stun:stun4.l.google.com:19302" },
+        ],
+    };
 
-  content.appendChild(strong);
-  content.appendChild(text);
+    // --- Custom Message Box Functions ---
+    const showMessageBox = (message, type = "alert", onConfirm = null, onCancel = null) => {
+        const overlay = document.getElementById("message-box-overlay");
+        const messageText = document.getElementById("message-box-text");
+        const confirmBtn = document.getElementById("message-box-confirm");
+        const cancelBtn = document.getElementById("message-box-cancel");
 
-  messages.appendChild(content);
-  requestAnimationFrame(() => {
-  messages.scrollTo({
-    top: messages.scrollHeight,
-    behavior: "smooth"
-  });
-});
+        messageText.innerText = message;
 
-  if (mode === "privacy" && messages.children.length > 5) {
-    messages.removeChild(messages.firstChild);
-  }
-};
+        confirmBtn.onclick = null;
+        cancelBtn.onclick = null;
 
-
-  // Socket.IO event listeners
-  socketio.on("message", data => {
-    createMessage(data.name, data.message, data.color);
-  });
-
-  socketio.on("user_count", count => {
-    document.getElementById("user-count").innerText = count;
-    const xoxGameBtn = document.getElementById('xox-game-btn');
-    if (count >= 2) {
-        xoxGameBtn.disabled = false;
-    } else {
-        xoxGameBtn.disabled = true;
-        if (!gameActive) {
-            xoxGameContainer.classList.remove('active');
-            isXOXVisible = false;
-            document.getElementById('xox-game-btn').innerText = 'Play XOX';
+        if (type === "confirm") {
+            cancelBtn.style.display = "inline-block";
+            confirmBtn.innerText = "Accept";
+            confirmBtn.onclick = () => {
+                overlay.classList.remove("show");
+                overlay.setAttribute("aria-hidden", "true");
+                if (onConfirm) onConfirm();
+            };
+            cancelBtn.onclick = () => {
+                overlay.classList.remove("show");
+                overlay.setAttribute("aria-hidden", "true");
+                if (onCancel) onCancel();
+            };
+        } else {
+            // 'alert' type
+            cancelBtn.style.display = "none";
+            confirmBtn.innerText = "OK";
+            confirmBtn.onclick = () => {
+                overlay.classList.remove("show");
+                overlay.setAttribute("aria-hidden", "true");
+                if (onConfirm) onConfirm();
+            };
         }
-    }
-  });
+        overlay.setAttribute("aria-hidden", "false");
+        overlay.classList.add("show");
+    };
 
-  remoteVideo.muted = false;
-  remoteVideo.playsInline = true;
-  remoteVideo.autoplay = true;
+    // --- User Selection Modal Functions ---
+    const userSelectionModalOverlay = document.getElementById("user-selection-modal-overlay");
+    const userSelectionList = document.getElementById("user-selection-list");
+    const selectUsersConfirmBtn = document.getElementById("select-users-confirm");
+    const selectUsersCancelBtn = document.getElementById("select-users-cancel");
 
-  remoteVideo.onloadedmetadata = () => {
-  remoteVideo.play().catch(() => {});
-  };
+    const showUserSelectionModal = (users) => {
+        userSelectionList.innerHTML = ""; // Clear previous list
+        users.forEach((user) => {
+            const label = document.createElement("label");
+            label.innerHTML = `<input type="checkbox" value="${user.sid}" data-name="${user.name}"> ${user.name}`;
+            userSelectionList.appendChild(label);
+        });
+        userSelectionModalOverlay.classList.add("show");
+        userSelectionModalOverlay.setAttribute("aria-hidden", "false");
+    };
 
-  socketio.on("typing", data => {
-    typingIndicator.innerText = `${data.name} is typing...`;
-    clearTimeout(typingTimeout);
-    typingTimeout = setTimeout(() => typingIndicator.innerText = "", 1500);
-  });
+    const hideUserSelectionModal = () => {
+        userSelectionModalOverlay.classList.remove("show");
+        userSelectionModalOverlay.setAttribute("aria-hidden", "true");
+    };
 
-  // NEW: Socket.IO event to receive list of online users
-  socketio.on("room_users_list", (users) => {
-    onlineUsers = users; // Store the list of users
-    // Only show modal or messages when user explicitly requested a call
-    if (!callRequestInProgress) return;
-    callRequestInProgress = false; // reset flag
-    if (users.length > 0) {
-      showUserSelectionModal(users);
-    } else {
-      showMessageBox("No other users available to call in this room.", 'alert');
-      videoCallBtn.innerText = "📞 Start Video Call";
-      videoCallBtn.classList.remove("hangup");
-      videoCallBtn.disabled = false;
-    }
-  });
+    selectUsersConfirmBtn.onclick = () => {
+        const selectedSids = Array.from(userSelectionList.querySelectorAll('input[type="checkbox"]:checked')).map(
+            (checkbox) => checkbox.value
+        );
 
-  // NEW: Socket.IO event to update online users (e.g., when someone joins/leaves)
-  socketio.on("online_users_update", (users) => {
-      onlineUsers = users;
-      // If the modal is currently open, update its list
-      if (userSelectionModalOverlay.classList.contains('show')) {
-          showUserSelectionModal(onlineUsers);
-      }
-  });
+        if (selectedSids.length === 0) {
+            showMessageBox("Please select at least one person to call.", "alert");
+            return;
+        }
 
+        if (selectedSids.length > 1) {
+            showMessageBox("For now, you can only select one person for a video call. Please choose one.", "alert");
+            return;
+        }
 
-  // --- WebRTC Signaling Events ---
-  socketio.on("call_request", (data) => {
-    if (isCalling) {
-      console.log("Already in a call, rejecting incoming call.");
-      socketio.emit("call_response", { action: "reject", requester_sid: data.requester_sid });
-      return;
-    }
-    remoteRequesterSid = data.requester_sid;
+        hideUserSelectionModal();
+        // For simplicity, we'll only initiate a call with the first selected user
+        // True multi-party calls require a more complex WebRTC architecture (SFU/MCU)
+        initiateCallWithSelectedUser(selectedSids[0]);
+    };
 
-    showMessageBox(`${data.from} is calling you. Do you want to accept?`, 'confirm',
-      async () => {
-        isInitiator = false;
+    selectUsersCancelBtn.onclick = () => {
+        hideUserSelectionModal();
+        videoCallBtn.innerText = "📞 Start Video Call"; // Reset button text
+        videoCallBtn.classList.remove("hangup");
+        videoCallBtn.disabled = false; // Re-enable button
+    };
+
+    // Function to create and append message elements with dynamic colors
+    const createMessage = (name, msg, color) => {
+        const content = document.createElement("div");
+        content.classList.add("text");
+        content.style.backgroundColor = color || "rgba(255,255,255,0.6)";
+        content.style.color = "black";
+
+        const strong = document.createElement("strong");
+        strong.textContent = name; // SAFE
+
+        const text = document.createElement("span");
+        text.textContent = `: ${msg}`; // SAFE
+
+        content.appendChild(strong);
+        content.appendChild(text);
+
+        messages.appendChild(content);
+        requestAnimationFrame(() => {
+            messages.scrollTo({
+                top: messages.scrollHeight,
+                behavior: "smooth",
+            });
+        });
+
+        if (mode === "privacy" && messages.children.length > 5) {
+            messages.removeChild(messages.firstChild);
+        }
+    };
+
+    // Socket.IO event listeners
+    socketio.on("message", (data) => {
+        createMessage(data.name, data.message, data.color);
+    });
+
+    socketio.on("user_count", (count) => {
+        document.getElementById("user-count").innerText = count;
+        const xoxGameBtn = document.getElementById("xox-game-btn");
+        if (count >= 2) {
+            xoxGameBtn.disabled = false;
+        } else {
+            xoxGameBtn.disabled = true;
+            if (!gameActive) {
+                xoxGameContainer.classList.remove("active");
+                isXOXVisible = false;
+                document.getElementById("xox-game-btn").innerText = "Play XOX";
+            }
+        }
+    });
+
+    remoteVideo.muted = false;
+    remoteVideo.playsInline = true;
+    remoteVideo.autoplay = true;
+
+    remoteVideo.onloadedmetadata = () => {
+        remoteVideo.play().catch(() => {});
+    };
+
+    socketio.on("typing", (data) => {
+        typingIndicator.innerText = `${data.name} is typing...`;
+        clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => (typingIndicator.innerText = ""), 1500);
+    });
+
+    // NEW: Socket.IO event to receive list of online users
+    socketio.on("room_users_list", (users) => {
+        onlineUsers = users; // Store the list of users
+        // Only show modal or messages when user explicitly requested a call
+        if (!callRequestInProgress) return;
+        callRequestInProgress = false; // reset flag
+        if (users.length > 0) {
+            showUserSelectionModal(users);
+        } else {
+            showMessageBox("No other users available to call in this room.", "alert");
+            videoCallBtn.innerText = "📞 Start Video Call";
+            videoCallBtn.classList.remove("hangup");
+            videoCallBtn.disabled = false;
+        }
+    });
+
+    // NEW: Socket.IO event to update online users (e.g., when someone joins/leaves)
+    socketio.on("online_users_update", (users) => {
+        onlineUsers = users;
+        // If the modal is currently open, update its list
+        if (userSelectionModalOverlay.classList.contains("show")) {
+            showUserSelectionModal(onlineUsers);
+        }
+    });
+
+    // --- WebRTC Signaling Events ---
+    socketio.on("call_request", (data) => {
+        if (isCalling) {
+            console.log("Already in a call, rejecting incoming call.");
+            socketio.emit("call_response", { action: "reject", requester_sid: data.requester_sid });
+            return;
+        }
+        remoteRequesterSid = data.requester_sid;
+
+        showMessageBox(
+            `${data.from} is calling you. Do you want to accept?`,
+            "confirm",
+            async () => {
+                isInitiator = false;
+                isCalling = true;
+                videoCallBtn.innerText = "Hang Up";
+                videoCallBtn.classList.add("hangup");
+                videoCallBtn.disabled = true;
+
+                const setupSuccess = await startVideoCallInternal();
+                if (setupSuccess) {
+                    socketio.emit("call_response", { action: "accept", requester_sid: remoteRequesterSid });
+                    await createAnswer();
+                    createMessage("System", `You accepted a call from ${data.from}.`);
+                    videoCallBtn.disabled = false;
+                } else {
+                    socketio.emit("call_response", { action: "reject", requester_sid: remoteRequesterSid });
+                    createMessage("System", "Could not start video call. Check permissions/devices.");
+                    endVideoCall();
+                }
+            },
+            () => {
+                socketio.emit("call_response", { action: "reject", requester_sid: remoteRequesterSid });
+                createMessage("System", `You rejected a call from ${data.from}.`);
+                remoteRequesterSid = null;
+            }
+        );
+    });
+
+    socketio.on("call_accepted", async (data) => {
+        remoteRequesterSid = data.requester_sid; // ✅ STORE SID
         isCalling = true;
         videoCallBtn.innerText = "Hang Up";
+        videoCallBtn.classList.add("hangup");
+        videoCallBtn.disabled = false;
+        createMessage("System", `${data.from} accepted your call.`);
+        await createOffer();
+    });
+
+    socketio.on("call_rejected", (data) => {
+        showMessageBox(`${data.from} ${data.reason}`, "alert");
+        endVideoCall();
+    });
+
+    socketio.on("call_status", (data) => {
+        createMessage("System", data.message);
+    });
+
+    socketio.on("offer", async (data) => {
+        remoteRequesterSid = data.from_sid;
+
+        if (!peerConnection) {
+            await startVideoCallInternal();
+        }
+
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+
+        // ✅ NOW create answer
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+
+        socketio.emit("answer", {
+            answer: peerConnection.localDescription,
+            target_sid: remoteRequesterSid,
+        });
+    });
+
+    socketio.on("answer", async (data) => {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+    });
+
+    socketio.on("ice_candidate", async (data) => {
+        try {
+            if (peerConnection && data.candidate) {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
+            }
+        } catch (e) {
+            console.error("Error adding received ICE candidate:", e);
+        }
+    });
+
+    socketio.on("call_end", (data) => {
+        endVideoCall();
+        createMessage("System", `${data.name} has ended the video call.`);
+    });
+
+    // --- WebRTC Functions ---
+    const startVideoCallInternal = async (deviceId = null) => {
+        try {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                // On some insecure contexts (http with remote IP) getUserMedia is not available.
+                showMessageBox(
+                    "Cannot access camera/microphone: this page is not served over a secure context (HTTPS) or device permissions are disabled. Try using https://localhost or enable camera/microphone permissions.",
+                    "alert"
+                );
+                return false;
+            }
+
+            if (localStream) {
+                // Stop existing stream if switching camera
+                localStream.getTracks().forEach((track) => track.stop());
+            }
+            const constraints = {
+                video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: "user" },
+                audio: true,
+            };
+            localStream = await navigator.mediaDevices.getUserMedia(constraints);
+            localVideo.srcObject = localStream;
+            localVideoWrapper.classList.add("active");
+
+            // Store the current camera device ID
+            const videoTrack = localStream.getVideoTracks()[0];
+            if (videoTrack) {
+                try {
+                    const settings = videoTrack.getSettings();
+                    currentCameraDeviceId = settings.deviceId || null;
+                } catch (e) {
+                    currentCameraDeviceId = null;
+                }
+            }
+
+            // If peerConnection already exists, replace tracks
+            if (peerConnection) {
+                const senders = peerConnection.getSenders();
+                senders.forEach((sender) => {
+                    try {
+                        if (sender.track && sender.track.kind === "video") {
+                            sender.replaceTrack(videoTrack);
+                        } else if (sender.track && sender.track.kind === "audio") {
+                            sender.replaceTrack(localStream.getAudioTracks()[0]);
+                        }
+                    } catch (e) {
+                        console.warn("Failed to replace sender track:", e);
+                    }
+                });
+            } else {
+                // Create PeerConnection if it doesn't exist
+                peerConnection = new RTCPeerConnection(iceServers);
+
+                localStream.getTracks().forEach((track) => {
+                    peerConnection.addTrack(track, localStream);
+                });
+
+                peerConnection.ontrack = (event) => {
+                    try {
+                        // Assign the first non-local stream as remote
+                        if (event.streams && event.streams[0]) {
+                            const remoteStream = event.streams[0];
+                            remoteVideo.srcObject = remoteStream;
+                            remoteVideoWrapper.classList.add("active");
+                            // ensure autoplay
+                            try {
+                                remoteVideo.onloadedmetadata = () => remoteVideo.play().catch(() => {});
+                            } catch (err) {}
+
+                            // Retry loop: if remote video shows 0 width for some mobile browsers, retry a few times
+                            let attempts = 0;
+                            const retryInterval = setInterval(() => {
+                                attempts++;
+                                try {
+                                    if (remoteVideo && remoteVideo.videoWidth > 0) {
+                                        clearInterval(retryInterval);
+                                        return;
+                                    }
+                                    // reassign srcObject and try play again
+                                    remoteVideo.srcObject = remoteStream;
+                                    remoteVideo.play().catch(() => {});
+                                    if (attempts >= 6) {
+                                        clearInterval(retryInterval);
+                                    }
+                                } catch (e) {
+                                    if (attempts >= 6) clearInterval(retryInterval);
+                                }
+                            }, 800);
+                        } else if (event.stream) {
+                            remoteVideo.srcObject = event.stream;
+                            remoteVideoWrapper.classList.add("active");
+                        }
+                    } catch (e) {
+                        console.error("Error handling remote track:", e);
+                    }
+                };
+
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate && remoteRequesterSid) {
+                        socketio.emit("ice_candidate", {
+                            candidate: event.candidate,
+                            target_sid: remoteRequesterSid, // ✅ FIX
+                        });
+                    }
+                };
+
+                peerConnection.onconnectionstatechange = (event) => {
+                    console.log("PeerConnection state change:", peerConnection.connectionState);
+                    if (
+                        peerConnection.connectionState === "disconnected" ||
+                        peerConnection.connectionState === "failed"
+                    ) {
+                        if (isCalling) {
+                            if (videoCallBtn.innerText !== "📞 Start Video Call") {
+                                endVideoCall();
+                                createMessage(
+                                    "System",
+                                    "Video call disconnected due to network issues or peer leaving."
+                                );
+                            }
+                        }
+                    } else if (peerConnection.connectionState === "connected") {
+                        createMessage("System", "Video call connected!");
+                    }
+                };
+
+                peerConnection.oniceconnectionstatechange = (event) => {
+                    console.log("ICE connection state change:", peerConnection.iceConnectionState);
+                };
+            }
+
+            // Show video controls
+            document.querySelector(".video-controls-overlay").style.display = "flex";
+
+            // Update inputs height CSS variable used to prevent overlap
+            updateInputsHeightVar();
+
+            return true;
+        } catch (error) {
+            console.error("Error accessing media devices or setting up WebRTC:", error);
+            endVideoCall();
+
+            let errorMessage = "Could not start video call. ";
+            const name = error && error.name ? error.name : null;
+            const message = error && error.message ? error.message : "";
+            if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+                errorMessage += "Please grant camera and microphone permissions in your browser settings.";
+            } else if (name === "NotFoundError") {
+                errorMessage += "No camera or microphone found. Please ensure devices are connected.";
+            } else if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                errorMessage +=
+                    "Your browser does not expose getUserMedia on this page. Ensure you're using HTTPS or localhost.";
+            } else {
+                errorMessage += `An unexpected error occurred: ${name || "Unknown"} - ${message}`;
+            }
+            showMessageBox(errorMessage, "alert");
+            videoCallBtn.disabled = true;
+            videoCallBtn.innerText = "Error!";
+            return false;
+        }
+    };
+
+    const createOffer = async () => {
+        try {
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+
+            socketio.emit("offer", {
+                offer: peerConnection.localDescription,
+                target_sid: remoteRequesterSid, // ✅ FIX
+            });
+        } catch (error) {
+            console.error("Error creating offer:", error);
+        }
+    };
+
+    const createAnswer = async () => {
+        try {
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+
+            socketio.emit("answer", {
+                answer: peerConnection.localDescription,
+                target_sid: remoteRequesterSid, // ✅ FIX
+            });
+        } catch (error) {
+            console.error("Error creating answer:", error);
+        }
+    };
+
+    const endVideoCall = () => {
+        if (localStream) {
+            localStream.getTracks().forEach((track) => track.stop());
+            localStream = null;
+        }
+        if (peerConnection) {
+            try {
+                peerConnection.close();
+            } catch (e) {}
+            peerConnection = null;
+        }
+        localVideo.srcObject = null;
+        remoteVideo.srcObject = null;
+        localVideoWrapper.classList.remove("active");
+        remoteVideoWrapper.classList.remove("active");
+        isCalling = false;
+        isInitiator = false;
+        remoteRequesterSid = null;
+        videoCallBtn.innerText = "📞 Start Video Call";
+        videoCallBtn.classList.remove("hangup");
+        videoCallBtn.disabled = false;
+        document.querySelector(".video-controls-overlay").style.display = "none"; // Hide video controls
+        if (document.fullscreenElement) {
+            // Exit fullscreen if active
+            try {
+                document.exitFullscreen();
+            } catch (e) {}
+        }
+        updateInputsHeightVar();
+    };
+
+    // --- User Interaction Functions ---
+    const sendMessage = () => {
+        const msg = messageInput.value.trim();
+        if (msg === "") return;
+        socketio.emit("message", msg);
+        messageInput.value = "";
+        // After sending, ensure keyboard space is adjusted
+        adjustLayoutForKeyboard();
+    };
+
+    const handleKeyPress = (event) => {
+        if (event.key === "Enter") sendMessage();
+    };
+
+    const notifyTyping = () => {
+        socketio.emit("typing");
+    };
+
+    const initiateCallWithSelectedUser = async (targetSid) => {
+        isInitiator = true;
+        videoCallBtn.innerText = "Calling...";
         videoCallBtn.classList.add("hangup");
         videoCallBtn.disabled = true;
 
         const setupSuccess = await startVideoCallInternal();
-        if (setupSuccess) {
-          socketio.emit("call_response", { action: "accept", requester_sid: remoteRequesterSid });
-          await createAnswer();
-          createMessage("System", `You accepted a call from ${data.from}.`);
-          videoCallBtn.disabled = false;
-        } else {
-          socketio.emit("call_response", { action: "reject", requester_sid: remoteRequesterSid });
-          createMessage("System", "Could not start video call. Check permissions/devices.");
-          endVideoCall();
+        if (!setupSuccess) {
+            isCalling = false;
+            isInitiator = false;
+            videoCallBtn.innerText = "📞 Start Video Call";
+            videoCallBtn.classList.remove("hangup");
+            return;
         }
-      },
-      () => {
-        socketio.emit("call_response", { action: "reject", requester_sid: remoteRequesterSid });
-        createMessage("System", `You rejected a call from ${data.from}.`);
-        remoteRequesterSid = null;
-      }
-    );
-  });
 
-  socketio.on("call_accepted", async (data) => {
-    remoteRequesterSid = data.requester_sid; // ✅ STORE SID
-    isCalling = true;
-    videoCallBtn.innerText = "Hang Up";
-    videoCallBtn.classList.add("hangup");
-    videoCallBtn.disabled = false;
-    createMessage("System", `${data.from} accepted your call.`);
-    await createOffer();
-  });
+        isCalling = true;
+        socketio.emit("call_request", { target_sid: targetSid });
 
-
-  socketio.on("call_rejected", (data) => {
-    showMessageBox(`${data.from} ${data.reason}`, 'alert');
-    endVideoCall();
-  });
-
-  socketio.on("call_status", (data) => {
-      createMessage("System", data.message);
-  });
-
-  socketio.on("offer", async (data) => {
-  remoteRequesterSid = data.from_sid;
-
-  if (!peerConnection) {
-    await startVideoCallInternal();
-  }
-
-  await peerConnection.setRemoteDescription(
-    new RTCSessionDescription(data.offer)
-  );
-
-  // ✅ NOW create answer
-  const answer = await peerConnection.createAnswer();
-  await peerConnection.setLocalDescription(answer);
-
-  socketio.emit("answer", {
-    answer: peerConnection.localDescription,
-    target_sid: remoteRequesterSid
-  });
-  });
-
-
-
-  socketio.on("answer", async (data) => {
-    await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-  });
-
-  socketio.on("ice_candidate", async (data) => {
-    try {
-      if (peerConnection && data.candidate) {
-        await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-      }
-    } catch (e) {
-      console.error("Error adding received ICE candidate:", e);
-    }
-  });
-
-  socketio.on("call_end", (data) => {
-    endVideoCall();
-    createMessage("System", `${data.name} has ended the video call.`);
-  });
-
-  // --- WebRTC Functions ---
-  const startVideoCallInternal = async (deviceId = null) => {
-    try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          // On some insecure contexts (http with remote IP) getUserMedia is not available.
-          showMessageBox("Cannot access camera/microphone: this page is not served over a secure context (HTTPS) or device permissions are disabled. Try using https://localhost or enable camera/microphone permissions.", 'alert');
-          return false;
-      }
-
-      if (localStream) { // Stop existing stream if switching camera
-          localStream.getTracks().forEach(track => track.stop());
-      }
-      const constraints = {
-          video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: "user" },
-          audio: true
-      };
-      localStream = await navigator.mediaDevices.getUserMedia(constraints);
-      localVideo.srcObject = localStream;
-      localVideoWrapper.classList.add('active');
-
-      // Store the current camera device ID
-      const videoTrack = localStream.getVideoTracks()[0];
-      if (videoTrack) {
-          try {
-              const settings = videoTrack.getSettings();
-              currentCameraDeviceId = settings.deviceId || null;
-          } catch (e) {
-              currentCameraDeviceId = null;
-          }
-      }
-
-      // If peerConnection already exists, replace tracks
-      if (peerConnection) {
-          const senders = peerConnection.getSenders();
-          senders.forEach(sender => {
-              try {
-                  if (sender.track && sender.track.kind === 'video') {
-                      sender.replaceTrack(videoTrack);
-                  } else if (sender.track && sender.track.kind === 'audio') {
-                      sender.replaceTrack(localStream.getAudioTracks()[0]);
-                  }
-              } catch (e) {
-                  console.warn("Failed to replace sender track:", e);
-              }
-          });
-      } else {
-          // Create PeerConnection if it doesn't exist
-          peerConnection = new RTCPeerConnection(iceServers);
-
-          localStream.getTracks().forEach(track => {
-            peerConnection.addTrack(track, localStream);
-          });
-
-  peerConnection.ontrack = (event) => {
-            try {
-              // Assign the first non-local stream as remote
-              if (event.streams && event.streams[0]) {
-                const remoteStream = event.streams[0];
-                remoteVideo.srcObject = remoteStream;
-                remoteVideoWrapper.classList.add('active');
-                // ensure autoplay
-                try {
-                  remoteVideo.onloadedmetadata = () => remoteVideo.play().catch(()=>{});
-                } catch(err) {}
-
-                // Retry loop: if remote video shows 0 width for some mobile browsers, retry a few times
-                let attempts = 0;
-                const retryInterval = setInterval(() => {
-                  attempts++;
-                  try {
-                    if (remoteVideo && remoteVideo.videoWidth > 0) {
-                      clearInterval(retryInterval);
-                      return;
-                    }
-                    // reassign srcObject and try play again
-                    remoteVideo.srcObject = remoteStream;
-                    remoteVideo.play().catch(()=>{});
-                    if (attempts >= 6) {
-                      clearInterval(retryInterval);
-                    }
-                  } catch (e) {
-                    if (attempts >= 6) clearInterval(retryInterval);
-                  }
-                }, 800);
-
-              } else if (event.stream) {
-                remoteVideo.srcObject = event.stream;
-                remoteVideoWrapper.classList.add('active');
-              }
-            } catch (e) {
-              console.error('Error handling remote track:', e);
+        setTimeout(() => {
+            if (isCalling && isInitiator && peerConnection && !peerConnection.remoteDescription) {
+                showMessageBox("No one answered your call.", "alert");
+                socketio.emit("call_end");
+                endVideoCall();
             }
-          };
-
-
-  peerConnection.onicecandidate = (event) => {
-  if (event.candidate && remoteRequesterSid) {
-    socketio.emit("ice_candidate", {
-      candidate: event.candidate,
-      target_sid: remoteRequesterSid   // ✅ FIX
-    });
-  }
-  };
-
-
-
-
-          peerConnection.onconnectionstatechange = (event) => {
-            console.log('PeerConnection state change:', peerConnection.connectionState);
-            if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
-              if (isCalling) {
-                if (videoCallBtn.innerText !== "📞 Start Video Call") {
-                    endVideoCall();
-                    createMessage("System", "Video call disconnected due to network issues or peer leaving.");
-                }
-              }
-            } else if (peerConnection.connectionState === 'connected') {
-              createMessage("System", "Video call connected!");
-            }
-          };
-
-          peerConnection.oniceconnectionstatechange = (event) => {
-            console.log('ICE connection state change:', peerConnection.iceConnectionState);
-          };
-      }
-
-      // Show video controls
-      document.querySelector('.video-controls-overlay').style.display = 'flex';
-
-      // Update inputs height CSS variable used to prevent overlap
-      updateInputsHeightVar();
-
-      return true;
-    } catch (error) {
-      console.error("Error accessing media devices or setting up WebRTC:", error);
-      endVideoCall();
-
-      let errorMessage = "Could not start video call. ";
-      const name = error && error.name ? error.name : null;
-      const message = error && error.message ? error.message : '';
-      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-        errorMessage += "Please grant camera and microphone permissions in your browser settings.";
-      } else if (name === 'NotFoundError') {
-        errorMessage += "No camera or microphone found. Please ensure devices are connected.";
-      } else if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        errorMessage += "Your browser does not expose getUserMedia on this page. Ensure you're using HTTPS or localhost.";
-      } else {
-        errorMessage += `An unexpected error occurred: ${name || 'Unknown'} - ${message}`;
-      }
-      showMessageBox(errorMessage, 'alert');
-      videoCallBtn.disabled = true;
-      videoCallBtn.innerText = "Error!";
-      return false;
-    }
-  };
-
-  const createOffer = async () => {
-  try {
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-
-    socketio.emit("offer", {
-      offer: peerConnection.localDescription,
-      target_sid: remoteRequesterSid   // ✅ FIX
-    });
-  } catch (error) {
-    console.error("Error creating offer:", error);
-  }
-  };
-
-
-  const createAnswer = async () => {
-  try {
-    const answer = await peerConnection.createAnswer();
-    await peerConnection.setLocalDescription(answer);
-
-    socketio.emit("answer", {
-      answer: peerConnection.localDescription,
-      target_sid: remoteRequesterSid   // ✅ FIX
-    });
-  } catch (error) {
-    console.error("Error creating answer:", error);
-  }
-  };
-
-
-  const endVideoCall = () => {
-    if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
-      localStream = null;
-    }
-    if (peerConnection) {
-      try { peerConnection.close(); } catch(e) {}
-      peerConnection = null;
-    }
-    localVideo.srcObject = null;
-    remoteVideo.srcObject = null;
-    localVideoWrapper.classList.remove('active');
-    remoteVideoWrapper.classList.remove('active');
-    isCalling = false;
-    isInitiator = false;
-    remoteRequesterSid = null;
-    videoCallBtn.innerText = "📞 Start Video Call";
-    videoCallBtn.classList.remove("hangup");
-    videoCallBtn.disabled = false;
-    document.querySelector('.video-controls-overlay').style.display = 'none'; // Hide video controls
-    if (document.fullscreenElement) { // Exit fullscreen if active
-        try { document.exitFullscreen(); } catch(e) {}
-    }
-    updateInputsHeightVar();
-  };
-
-  // --- User Interaction Functions ---
-  const sendMessage = () => {
-    const msg = messageInput.value.trim();
-    if (msg === "") return;
-    socketio.emit("message", msg);
-    messageInput.value = "";
-    // After sending, ensure keyboard space is adjusted
-    adjustLayoutForKeyboard();
-  };
-
-  const handleKeyPress = event => {
-    if (event.key === "Enter") sendMessage();
-  };
-
-  const notifyTyping = () => {
-    socketio.emit("typing");
-  };
-
-  const initiateCallWithSelectedUser = async (targetSid) => {
-    isInitiator = true;
-    videoCallBtn.innerText = "Calling...";
-    videoCallBtn.classList.add("hangup");
-    videoCallBtn.disabled = true;
-
-    const setupSuccess = await startVideoCallInternal();
-    if (!setupSuccess) {
-      isCalling = false;
-      isInitiator = false;
-      videoCallBtn.innerText = "📞 Start Video Call";
-      videoCallBtn.classList.remove("hangup");
-      return;
-    }
-
-    isCalling = true;
-    socketio.emit("call_request", { target_sid: targetSid });
-
-    setTimeout(() => {
-      if (isCalling && isInitiator && peerConnection && !peerConnection.remoteDescription) {
-        showMessageBox("No one answered your call.", 'alert');
-        socketio.emit("call_end");
-        endVideoCall();
-      }
-    }, 30000);
-  };
-
-  const toggleVideoCall = async () => {
-    if (videoCallBtn.disabled && videoCallBtn.innerText !== "Calling...") {
-      showMessageBox("Video call is unavailable. Please check camera/microphone permissions or device connection.", 'alert');
-      return;
-    }
-
-    if (!isCalling) {
-      const userCount = parseInt(document.getElementById("user-count").innerText);
-      if (userCount < 2) {
-        showMessageBox("Need at least 2 users in the room for a video call.", 'alert');
-        return;
-      } else if (userCount > 2) {
-        // If more than 2 users, prompt for selection
-        callRequestInProgress = true; socketio.emit("get_room_users"); // Request list of online users
-        videoCallBtn.innerText = "Calling..."; // Indicate a process is starting
-        videoCallBtn.classList.add("hangup");
-        videoCallBtn.disabled = true;
-      } else {
-        // Exactly 2 users, proceed with direct 1:1 call
-        initiateCallWithSelectedUser(null); // Pass null to let server find the other peer
-      }
-    } else {
-      socketio.emit("call_end");
-      endVideoCall();
-    }
-  };
-
-  const toggleDarkMode = () => {
-    const body = document.body;
-    const isDark = body.style.getPropertyValue("--bg-color") === "black";
-
-    body.style.setProperty("--bg-color", isDark ? "#ece6fa" : "black");
-    body.style.setProperty("--text-color", isDark ? "black" : "white");
-
-    const chatBgLight = "linear-gradient(135deg, #ece6fa, #ece6fa)";
-    const chatBgDark = "linear-gradient(135deg, #222, #333)";
-
-    document.querySelector('.chat-container').style.background = isDark ? chatBgLight : chatBgDark;
-    document.querySelector('.inputs-container').style.background = isDark ? chatBgLight : chatBgDark;
-
-    messageInput.style.color = isDark ? 'black' : 'white';
-  };
-
-  const leaveRoom = () => {
-    if (isCalling) {
-      socketio.emit("call_end");
-    }
-    window.location.href = "/logout"; // Redirect to logout page to clear session
-  };
-
-  // --- Video Call Controls ---
-  function toggleMute() {
-      if (localStream) {
-          const audioTrack = localStream.getAudioTracks()[0];
-          if (audioTrack) {
-              audioTrack.enabled = !audioTrack.enabled;
-              muteToggleButton.innerText = audioTrack.enabled ? 'Mute🔇' : 'Unmute🎤';
-              muteToggleButton.classList.toggle('active', !audioTrack.enabled);
-          }
-      }
-  }
-
-  async function switchCamera() {
-      if (!localStream) {
-          showMessageBox("No active video stream to switch camera.", 'alert');
-          return;
-      }
-
-      const videoTrack = localStream.getVideoTracks()[0];
-      if (!videoTrack) {
-          showMessageBox("No video track found.", 'alert');
-          return;
-      }
-
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoDevices = devices.filter(device => device.kind === 'videoinput');
-
-      if (videoDevices.length <= 1) {
-          showMessageBox("Only one camera found or no other cameras available.", 'alert');
-          return;
-      }
-
-      const currentDeviceId = videoTrack.getSettings().deviceId;
-      const nextDevice = videoDevices.find(device => device.deviceId !== currentDeviceId);
-
-      if (nextDevice) {
-          // Stop current track
-          videoTrack.stop();
-          // Restart stream with new device
-          await startVideoCallInternal(nextDevice.deviceId);
-      } else {
-          // This case should ideally not be hit if videoDevices.length > 1
-          showMessageBox("Could not find another camera to switch to.", 'alert');
-      }
-  }
-
-  function toggleFullscreen() {
-      if (!document.fullscreenElement) {
-          if (videoContainer.requestFullscreen) {
-              videoContainer.requestFullscreen();
-          } else if (videoContainer.webkitRequestFullscreen) { /* Safari */
-              videoContainer.webkitRequestFullscreen();
-          } else if (videoContainer.msRequestFullscreen) { /* IE11 */
-              videoContainer.msRequestFullscreen();
-          }
-          fullscreenToggleButton.innerText = 'fullscreen_exit';
-      } else {
-          if (document.exitFullscreen) {
-              document.exitFullscreen();
-          } else if (document.webkitExitFullscreen) { /* Safari */
-              document.webkitExitFullscreen();
-          } else if (document.msExitFullscreen) { /* IE11 */
-              document.msExitFullscreen();
-          }
-          fullscreenToggleButton.innerText = 'expand_content';
-      }
-      videoContainer.classList.toggle('fullscreen', !document.fullscreenElement);
-      adjustLayoutForKeyboard(); // Re-adjust layout after fullscreen toggle
-  }
-
-  // Listen for fullscreen change events
-  document.addEventListener('fullscreenchange', () => {
-      videoContainer.classList.toggle('fullscreen', document.fullscreenElement !== null);
-      fullscreenToggleButton.innerText = document.fullscreenElement ? 'fullscreen_exit' : 'expand_content';
-      adjustLayoutForKeyboard();
-  });
-  document.addEventListener('webkitfullscreenchange', () => {
-      videoContainer.classList.toggle('fullscreen', document.webkitFullscreenElement !== null);
-      fullscreenToggleButton.innerText = document.webkitFullscreenElement ? 'fullscreen_exit' : 'expand_content';
-      adjustLayoutForKeyboard();
-  });
-  document.addEventListener('msfullscreenchange', () => {
-      videoContainer.classList.toggle('fullscreen', document.msFullscreenElement !== null);
-      fullscreenToggleButton.innerText = document.msFullscreenElement ? 'fullscreen_exit' : 'expand_content';
-      adjustLayoutForKeyboard();
-  });
-
-
-  // --- XOX Game Variables and Functions ---
-  const xoxGameContainer = document.getElementById('xox-game-container');
-  const xoxBoard = document.getElementById('xox-board');
-  const xoxCells = document.querySelectorAll('.xox-cell');
-  const xoxStatus = document.getElementById('xox-status');
-  const xoxStartBtn = document.getElementById('xox-start-btn');
-  const xoxResetBtn = document.getElementById('xox-reset-btn');
-
-  let board = ['', '', '', '', '', '', '', '', ''];
-  let currentPlayer = 'X';
-  let gameActive = false;
-  let yourSymbol = null;
-  let isYourTurn = false;
-  let playerXName = '';
-  let playerOName = '';
-  let isXOXVisible = false;
-
-  const winningConditions = [
-      [0, 1, 2], [3, 4, 5], [6, 7, 8],
-      [0, 3, 6], [1, 4, 7], [2, 5, 8],
-      [0, 4, 8], [2, 4, 6]
-  ];
-
-  const toggleXOXVisibility = () => {
-      // If user clicks Play XOX and another user exists, directly request a start
-      const userCount = parseInt(document.getElementById('user-count').innerText);
-      if (!isXOXVisible && userCount >= 2) {
-          // user wants to play - request server to start game immediately
-          socketio.emit('game_start_request');
-          isXOXVisible = true;
-          xoxGameContainer.classList.add('active');
-          document.getElementById('xox-game-btn').innerText = 'Hide XOX';
-          updateGameStatus();
-          adjustLayoutForKeyboard();
-          return;
-      }
-      isXOXVisible = !isXOXVisible;
-      if (isXOXVisible) {
-          xoxGameContainer.classList.add('active');
-          document.getElementById('xox-game-btn').innerText = 'Hide XOX';
-          updateGameStatus();
-          adjustLayoutForKeyboard();
-      } else {
-          xoxGameContainer.classList.remove('active');
-          document.getElementById('xox-game-btn').innerText = 'Play XOX';
-          adjustLayoutForKeyboard();
-      }
-  };
-
-  const initializeBoard = () => {
-      board = ['', '', '', '', '', '', '', '', ''];
-      xoxCells.forEach(cell => {
-          cell.innerText = '';
-          cell.classList.remove('x', 'o', 'winning-cell');
-          cell.style.pointerEvents = 'none';
-          cell.removeEventListener('click', handleCellClick);
-          cell.addEventListener('click', handleCellClick);
-      });
-      gameActive = false;
-      yourSymbol = null;
-      isYourTurn = false;
-      playerXName = '';
-      playerOName = '';
-      xoxStatus.innerText = 'Need 2 players to start XOX.';
-      xoxStartBtn.style.display = 'block';
-      xoxResetBtn.style.display = 'none';
-      currentPlayer = 'X';
-      xoxStartBtn.disabled = true;
-  };
-
-  const checkWinner = () => {
-      let roundWon = false;
-      let winningCells = [];
-      for (let i = 0; i < winningConditions.length; i++) {
-          const winCondition = winningConditions[i];
-          let a = board[winCondition[0]];
-          let b = board[winCondition[1]];
-          let c = board[winCondition[2]];
-
-          if (a === '' || b === '' || c === '') {
-              continue;
-          }
-          if (a === b && b === c) {
-              roundWon = true;
-              winningCells = winCondition;
-              break;
-          }
-      }
-
-      if (roundWon) {
-          gameActive = false;
-          highlightWinningCells(winningCells);
-          const winnerDisplay = board[winningCells[0]] === 'X' ? playerXName : playerOName;
-          const winnerSymbol = board[winningCells[0]];
-          xoxStatus.innerText = `${winnerDisplay} (${winnerSymbol}) has won!`;
-          socketio.emit("game_over", { winner: winnerSymbol, draw: false, message: `${winnerDisplay} won the XOX game!` });
-          xoxStartBtn.style.display = 'none';
-          xoxResetBtn.style.display = 'block';
-          return true;
-      }
-
-      if (!board.includes('')) {
-          gameActive = false;
-          xoxStatus.innerText = 'Game Draw!';
-          socketio.emit("game_over", { winner: null, draw: true, message: "XOX game ended in a draw!" });
-          xoxStartBtn.style.display = 'none';
-          xoxResetBtn.style.display = 'block';
-          return true;
-      }
-      return false;
-  };
-
-  const highlightWinningCells = (cells) => {
-      cells.forEach(index => {
-          xoxCells[index].classList.add('winning-cell');
-      });
-  };
-
-  const handleCellClick = (event) => {
-      const clickedCell = event.target;
-      const clickedCellIndex = parseInt(clickedCell.dataset.index);
-
-      if (!gameActive || board[clickedCellIndex] !== '' || !isYourTurn) {
-          return;
-      }
-
-      board[clickedCellIndex] = yourSymbol;
-      clickedCell.innerText = yourSymbol;
-      clickedCell.classList.add(yourSymbol.toLowerCase());
-      clickedCell.style.pointerEvents = 'none';
-
-      const nextPlayerSymbol = yourSymbol === 'X' ? 'O' : 'X';
-
-      socketio.emit("game_move", {
-          index: clickedCellIndex,
-          symbol: yourSymbol,
-          next_turn_symbol: nextPlayerSymbol,
-          board_state: board
-      });
-
-      isYourTurn = false;
-      updateGameStatus();
-  };
-
-  // --- Socket.IO Game Event Handlers ---
-
-  socketio.on("enable_game_start", () => {
-      const userCount = parseInt(document.getElementById("user-count").innerText);
-      if (userCount >= 2 && !gameActive) {
-          xoxStartBtn.disabled = false;
-          xoxStatus.innerText = 'Two players are in the room. Click "Start New XOX Game"!';
-      }
-  });
-
-  socketio.on("disable_game_start", () => {
-      xoxStartBtn.disabled = true;
-      if (!gameActive) {
-          xoxStatus.innerText = 'Need 2 players to start XOX.';
-      }
-  });
-
-  socketio.on("game_status", (data) => {
-      createMessage("System", `XOX: ${data.message}`);
-      if (!gameActive) {
-        xoxStatus.innerText = data.message;
-      }
-  });
-
-  socketio.on("game_start", (data) => {
-      initializeBoard();
-      gameActive = true;
-      yourSymbol = data.your_symbol;
-      isYourTurn = data.is_your_turn;
-      playerXName = data.player_x_name;
-      playerOName = data.player_o_name;
-
-      // Ensure the XOX UI is visible for both players
-      isXOXVisible = true;
-      xoxGameContainer.classList.add('active');
-      document.getElementById('xox-game-btn').innerText = 'Hide XOX';
-
-      xoxStartBtn.style.display = 'none';
-      xoxResetBtn.style.display = 'none';
-
-      createMessage("System", `XOX game started! ${playerXName} is X, ${playerOName} is O. You are **${yourSymbol}**.`);
-      updateGameStatus();
-      adjustLayoutForKeyboard();
-  });
-
-  socketio.on("game_update", (data) => {
-      if (!gameActive || board[data.index] !== '') {
-          console.warn("Received invalid game update or game not active.");
-          return;
-      }
-
-      board[data.index] = data.symbol;
-      const cell = xoxCells[data.index];
-      cell.innerText = data.symbol;
-      cell.classList.add(data.symbol.toLowerCase());
-      cell.style.pointerEvents = 'none';
-
-      isYourTurn = (data.current_turn_sid === socketio.id);
-
-      updateGameStatus();
-      checkWinner();
-  });
-
-  socketio.on("game_result", (data) => {
-      gameActive = false;
-      isYourTurn = false;
-      xoxStartBtn.style.display = 'none';
-      xoxResetBtn.style.display = 'block';
-      createMessage("System", `XOX Game Over: ${data.message}`);
-      if (data.draw) {
-          xoxStatus.innerText = 'Game Draw!';
-      } else if (data.winner) {
-          const winnerDisplayName = data.winner === 'X' ? playerXName : playerOName;
-          xoxStatus.innerText = `${winnerDisplayName} (${data.winner}) has won!`;
-      }
-      xoxCells.forEach(cell => cell.style.pointerEvents = 'none');
-      xoxStartBtn.disabled = false;
-  });
-
-  socketio.on("game_reset", (data) => {
-      initializeBoard();
-      createMessage("System", `XOX Game Reset: ${data.reason}`);
-      const userCount = parseInt(document.getElementById("user-count").innerText);
-      if (userCount >= 2) {
-          xoxStartBtn.disabled = false;
-          xoxStatus.innerText = 'Two players are in the room. Click "Start New XOX Game"!';
-      } else {
-          xoxStatus.innerText = 'Need 2 players to start XOX.';
-      }
-  });
-
-
-  const startGame = () => {
-      if (parseInt(document.getElementById("user-count").innerText) < 2) {
-          showMessageBox("You need 2 players in the room to start an XOX game.", 'alert');
-          return;
-      }
-      xoxStartBtn.disabled = true;
-      socketio.emit("game_start_request");
-  };
-
-  const resetGame = () => {
-      xoxResetBtn.disabled = true;
-      socketio.emit("game_reset_request");
-  };
-
-  const updateGameStatus = () => {
-    if (!gameActive) {
-        if (!xoxStatus.innerText.includes("won") && !xoxStatus.innerText.includes("Draw") && yourSymbol === null) {
+        }, 30000);
+    };
+
+    const toggleVideoCall = async () => {
+        if (videoCallBtn.disabled && videoCallBtn.innerText !== "Calling...") {
+            showMessageBox(
+                "Video call is unavailable. Please check camera/microphone permissions or device connection.",
+                "alert"
+            );
+            return;
+        }
+
+        if (!isCalling) {
             const userCount = parseInt(document.getElementById("user-count").innerText);
-            xoxStatus.innerText = userCount < 2 ? 'Need 2 players to start XOX.' : 'Waiting for a new game to start.';
-        }
-    } else {
-        const currentPlayerName = currentPlayer === 'X' ? playerXName : playerOName;
-        const yourTurnText = isYourTurn ? 'Your turn!' : '';
-        xoxStatus.innerText = `${currentPlayerName}'s turn (${currentPlayer}). ${yourTurnText}`;
-    }
-    xoxCells.forEach(cell => {
-        if (gameActive && isYourTurn && board[parseInt(cell.dataset.index)] === '') {
-            cell.style.pointerEvents = 'auto';
+            if (userCount < 2) {
+                showMessageBox("Need at least 2 users in the room for a video call.", "alert");
+                return;
+            } else if (userCount > 2) {
+                // If more than 2 users, prompt for selection
+                callRequestInProgress = true;
+                socketio.emit("get_room_users"); // Request list of online users
+                videoCallBtn.innerText = "Calling..."; // Indicate a process is starting
+                videoCallBtn.classList.add("hangup");
+                videoCallBtn.disabled = true;
+            } else {
+                // Exactly 2 users, proceed with direct 1:1 call
+                initiateCallWithSelectedUser(null); // Pass null to let server find the other peer
+            }
         } else {
-            cell.style.pointerEvents = 'none';
+            socketio.emit("call_end");
+            endVideoCall();
+        }
+    };
+
+    const toggleDarkMode = () => {
+        const body = document.body;
+        const isDark = body.style.getPropertyValue("--bg-color") === "black";
+
+        body.style.setProperty("--bg-color", isDark ? "#ece6fa" : "black");
+        body.style.setProperty("--text-color", isDark ? "black" : "white");
+
+        const chatBgLight = "linear-gradient(135deg, #ece6fa, #ece6fa)";
+        const chatBgDark = "linear-gradient(135deg, #222, #333)";
+
+        document.querySelector(".chat-container").style.background = isDark ? chatBgLight : chatBgDark;
+        document.querySelector(".inputs-container").style.background = isDark ? chatBgLight : chatBgDark;
+
+    };
+
+    const leaveRoom = () => {
+        if (isCalling) {
+            socketio.emit("call_end");
+        }
+        window.location.href = "/logout"; // Redirect to logout page to clear session
+    };
+
+    // --- Video Call Controls ---
+    function toggleMute() {
+        if (localStream) {
+            const audioTrack = localStream.getAudioTracks()[0];
+            if (audioTrack) {
+                audioTrack.enabled = !audioTrack.enabled;
+                muteToggleButton.innerText = audioTrack.enabled ? "Mute🔇" : "Unmute🎤";
+                muteToggleButton.classList.toggle("active", !audioTrack.enabled);
+            }
+        }
+    }
+
+    async function switchCamera() {
+        if (!localStream) {
+            showMessageBox("No active video stream to switch camera.", "alert");
+            return;
+        }
+
+        const videoTrack = localStream.getVideoTracks()[0];
+        if (!videoTrack) {
+            showMessageBox("No video track found.", "alert");
+            return;
+        }
+
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = devices.filter((device) => device.kind === "videoinput");
+
+        if (videoDevices.length <= 1) {
+            showMessageBox("Only one camera found or no other cameras available.", "alert");
+            return;
+        }
+
+        const currentDeviceId = videoTrack.getSettings().deviceId;
+        const nextDevice = videoDevices.find((device) => device.deviceId !== currentDeviceId);
+
+        if (nextDevice) {
+            // Stop current track
+            videoTrack.stop();
+            // Restart stream with new device
+            await startVideoCallInternal(nextDevice.deviceId);
+        } else {
+            // This case should ideally not be hit if videoDevices.length > 1
+            showMessageBox("Could not find another camera to switch to.", "alert");
+        }
+    }
+
+    function toggleFullscreen() {
+        if (!document.fullscreenElement) {
+            if (videoContainer.requestFullscreen) {
+                videoContainer.requestFullscreen();
+            } else if (videoContainer.webkitRequestFullscreen) {
+                /* Safari */
+                videoContainer.webkitRequestFullscreen();
+            } else if (videoContainer.msRequestFullscreen) {
+                /* IE11 */
+                videoContainer.msRequestFullscreen();
+            }
+            fullscreenToggleButton.innerText = "fullscreen_exit";
+        } else {
+            if (document.exitFullscreen) {
+                document.exitFullscreen();
+            } else if (document.webkitExitFullscreen) {
+                /* Safari */
+                document.webkitExitFullscreen();
+            } else if (document.msExitFullscreen) {
+                /* IE11 */
+                document.msExitFullscreen();
+            }
+            fullscreenToggleButton.innerText = "expand_content";
+        }
+        videoContainer.classList.toggle("fullscreen", !document.fullscreenElement);
+        adjustLayoutForKeyboard(); // Re-adjust layout after fullscreen toggle
+    }
+
+    // Listen for fullscreen change events
+    document.addEventListener("fullscreenchange", () => {
+        videoContainer.classList.toggle("fullscreen", document.fullscreenElement !== null);
+        fullscreenToggleButton.innerText = document.fullscreenElement ? "fullscreen_exit" : "expand_content";
+        adjustLayoutForKeyboard();
+    });
+    document.addEventListener("webkitfullscreenchange", () => {
+        videoContainer.classList.toggle("fullscreen", document.webkitFullscreenElement !== null);
+        fullscreenToggleButton.innerText = document.webkitFullscreenElement ? "fullscreen_exit" : "expand_content";
+        adjustLayoutForKeyboard();
+    });
+    document.addEventListener("msfullscreenchange", () => {
+        videoContainer.classList.toggle("fullscreen", document.msFullscreenElement !== null);
+        fullscreenToggleButton.innerText = document.msFullscreenElement ? "fullscreen_exit" : "expand_content";
+        adjustLayoutForKeyboard();
+    });
+
+    // --- XOX Game Variables and Functions ---
+    const xoxGameContainer = document.getElementById("xox-game-container");
+    const xoxBoard = document.getElementById("xox-board");
+    const xoxCells = document.querySelectorAll(".xox-cell");
+    const xoxStatus = document.getElementById("xox-status");
+    const xoxStartBtn = document.getElementById("xox-start-btn");
+    const xoxResetBtn = document.getElementById("xox-reset-btn");
+
+    let board = ["", "", "", "", "", "", "", "", ""];
+    let currentPlayer = "X";
+    let gameActive = false;
+    let yourSymbol = null;
+    let isYourTurn = false;
+    let playerXName = "";
+    let playerOName = "";
+    let isXOXVisible = false;
+
+    const winningConditions = [
+        [0, 1, 2],
+        [3, 4, 5],
+        [6, 7, 8],
+        [0, 3, 6],
+        [1, 4, 7],
+        [2, 5, 8],
+        [0, 4, 8],
+        [2, 4, 6],
+    ];
+
+    const toggleXOXVisibility = () => {
+        // If user clicks Play XOX and another user exists, directly request a start
+        const userCount = parseInt(document.getElementById("user-count").innerText);
+        if (!isXOXVisible && userCount >= 2) {
+            // user wants to play - request server to start game immediately
+            socketio.emit("game_start_request");
+            isXOXVisible = true;
+            xoxGameContainer.classList.add("active");
+            document.getElementById("xox-game-btn").innerText = "Hide XOX";
+            updateGameStatus();
+            adjustLayoutForKeyboard();
+            return;
+        }
+        isXOXVisible = !isXOXVisible;
+        if (isXOXVisible) {
+            xoxGameContainer.classList.add("active");
+            document.getElementById("xox-game-btn").innerText = "Hide XOX";
+            updateGameStatus();
+            adjustLayoutForKeyboard();
+        } else {
+            xoxGameContainer.classList.remove("active");
+            document.getElementById("xox-game-btn").innerText = "Play XOX";
+            adjustLayoutForKeyboard();
+        }
+    };
+
+    const initializeBoard = () => {
+        board = ["", "", "", "", "", "", "", "", ""];
+        xoxCells.forEach((cell) => {
+            cell.innerText = "";
+            cell.classList.remove("x", "o", "winning-cell");
+            cell.style.pointerEvents = "none";
+            cell.removeEventListener("click", handleCellClick);
+            cell.addEventListener("click", handleCellClick);
+        });
+        gameActive = false;
+        yourSymbol = null;
+        isYourTurn = false;
+        playerXName = "";
+        playerOName = "";
+        xoxStatus.innerText = "Need 2 players to start XOX.";
+        xoxStartBtn.style.display = "block";
+        xoxResetBtn.style.display = "none";
+        currentPlayer = "X";
+        xoxStartBtn.disabled = true;
+    };
+
+    const checkWinner = () => {
+        let roundWon = false;
+        let winningCells = [];
+        for (let i = 0; i < winningConditions.length; i++) {
+            const winCondition = winningConditions[i];
+            let a = board[winCondition[0]];
+            let b = board[winCondition[1]];
+            let c = board[winCondition[2]];
+
+            if (a === "" || b === "" || c === "") {
+                continue;
+            }
+            if (a === b && b === c) {
+                roundWon = true;
+                winningCells = winCondition;
+                break;
+            }
+        }
+
+        if (roundWon) {
+            gameActive = false;
+            highlightWinningCells(winningCells);
+            const winnerDisplay = board[winningCells[0]] === "X" ? playerXName : playerOName;
+            const winnerSymbol = board[winningCells[0]];
+            xoxStatus.innerText = `${winnerDisplay} (${winnerSymbol}) has won!`;
+            socketio.emit("game_over", {
+                winner: winnerSymbol,
+                draw: false,
+                message: `${winnerDisplay} won the XOX game!`,
+            });
+            xoxStartBtn.style.display = "none";
+            xoxResetBtn.style.display = "block";
+            return true;
+        }
+
+        if (!board.includes("")) {
+            gameActive = false;
+            xoxStatus.innerText = "Game Draw!";
+            socketio.emit("game_over", { winner: null, draw: true, message: "XOX game ended in a draw!" });
+            xoxStartBtn.style.display = "none";
+            xoxResetBtn.style.display = "block";
+            return true;
+        }
+        return false;
+    };
+
+    const highlightWinningCells = (cells) => {
+        cells.forEach((index) => {
+            xoxCells[index].classList.add("winning-cell");
+        });
+    };
+
+    const handleCellClick = (event) => {
+        const clickedCell = event.target;
+        const clickedCellIndex = parseInt(clickedCell.dataset.index);
+
+        if (!gameActive || board[clickedCellIndex] !== "" || !isYourTurn) {
+            return;
+        }
+
+        board[clickedCellIndex] = yourSymbol;
+        clickedCell.innerText = yourSymbol;
+        clickedCell.classList.add(yourSymbol.toLowerCase());
+        clickedCell.style.pointerEvents = "none";
+
+        const nextPlayerSymbol = yourSymbol === "X" ? "O" : "X";
+
+        socketio.emit("game_move", {
+            index: clickedCellIndex,
+            symbol: yourSymbol,
+            next_turn_symbol: nextPlayerSymbol,
+            board_state: board,
+        });
+
+        isYourTurn = false;
+        updateGameStatus();
+    };
+
+    // --- Socket.IO Game Event Handlers ---
+
+    socketio.on("enable_game_start", () => {
+        const userCount = parseInt(document.getElementById("user-count").innerText);
+        if (userCount >= 2 && !gameActive) {
+            xoxStartBtn.disabled = false;
+            xoxStatus.innerText = 'Two players are in the room. Click "Start New XOX Game"!';
         }
     });
-  };
 
-  initializeBoard();
-
-  // --- Mobile Keyboard Alignment Logic ---
-  const adjustLayoutForKeyboard = () => {
-    const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-
-    const controlsHeight = controls.offsetHeight;
-    const inputsHeight = inputsContainer.offsetHeight;
-    const typingIndicatorHeight = typingIndicator.innerText ? typingIndicator.offsetHeight : 0;
-    const videoContainerHeight = document.getElementById('video-container').offsetHeight;
-    const xoxContainerHeight = isXOXVisible ? xoxGameContainer.offsetHeight : 0;
-
-    const chatContainerPaddingTop = parseFloat(getComputedStyle(chatContainer).paddingTop);
-    const chatContainerPaddingBottom = parseFloat(getComputedStyle(chatContainer).paddingBottom);
-    const totalContainerPadding = chatContainerPaddingTop + chatContainerPaddingBottom;
-
-    const messagesAvailableHeight = viewportHeight - controlsHeight - inputsHeight - typingIndicatorHeight - videoContainerHeight - xoxContainerHeight - totalContainerPadding;
-
-    // Set reasonable minimum to avoid negative heights
-    const finalHeight = Math.max(120, messagesAvailableHeight);
-    messages.style.maxHeight = `${finalHeight}px`;
-
-    messages.scrollTop = messages.scrollHeight;
-
-    // Update CSS var for inputs height used in padding calculations
-    updateInputsHeightVar();
-  };
-
-  function updateInputsHeightVar() {
-    try {
-      const h = inputsContainer.offsetHeight || 64;
-      document.documentElement.style.setProperty('--inputs-height', `${h}px`);
-    } catch(e) {}
-  }
-
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', adjustLayoutForKeyboard);
-  } else {
-    window.addEventListener('resize', adjustLayoutForKeyboard);
-  }
-
-
-  // VisualViewport handlers for better mobile keyboard behavior
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', () => {
-      adjustLayoutForKeyboard();
-      // small defer to allow layout settle
-      setTimeout(() => messages.scrollTop = messages.scrollHeight, 120);
-    });
-    window.visualViewport.addEventListener('scroll', () => {
-      // When keyboard opens, some browsers move the visual viewport; ensure input stays visible
-      adjustLayoutForKeyboard();
-    });
-  }
-
-  window.addEventListener('load', () => {
-    adjustLayoutForKeyboard();
-    updateInputsHeightVar();
-    const userCount = parseInt(document.getElementById("user-count").innerText);
-    if (userCount >= 2 && !gameActive) {
-        document.getElementById('xox-game-btn').disabled = false;
-        xoxStartBtn.disabled = false;
-        xoxStatus.innerText = 'Two players are in the room. Click "Start New XOX Game"!';
-    } else {
-        document.getElementById('xox-game-btn').disabled = true;
+    socketio.on("disable_game_start", () => {
         xoxStartBtn.disabled = true;
+        if (!gameActive) {
+            xoxStatus.innerText = "Need 2 players to start XOX.";
+        }
+    });
+
+    socketio.on("game_status", (data) => {
+        createMessage("System", `XOX: ${data.message}`);
+        if (!gameActive) {
+            xoxStatus.innerText = data.message;
+        }
+    });
+
+    socketio.on("game_start", (data) => {
+        initializeBoard();
+        gameActive = true;
+        yourSymbol = data.your_symbol;
+        isYourTurn = data.is_your_turn;
+        playerXName = data.player_x_name;
+        playerOName = data.player_o_name;
+
+        // Ensure the XOX UI is visible for both players
+        isXOXVisible = true;
+        xoxGameContainer.classList.add("active");
+        document.getElementById("xox-game-btn").innerText = "Hide XOX";
+
+        xoxStartBtn.style.display = "none";
+        xoxResetBtn.style.display = "none";
+
+        createMessage(
+            "System",
+            `XOX game started! ${playerXName} is X, ${playerOName} is O. You are **${yourSymbol}**.`
+        );
+        updateGameStatus();
+        adjustLayoutForKeyboard();
+    });
+
+    socketio.on("game_update", (data) => {
+        if (!gameActive || board[data.index] !== "") {
+            console.warn("Received invalid game update or game not active.");
+            return;
+        }
+
+        board[data.index] = data.symbol;
+        const cell = xoxCells[data.index];
+        cell.innerText = data.symbol;
+        cell.classList.add(data.symbol.toLowerCase());
+        cell.style.pointerEvents = "none";
+
+        isYourTurn = data.current_turn_sid === socketio.id;
+
+        updateGameStatus();
+        checkWinner();
+    });
+
+    socketio.on("game_result", (data) => {
+        gameActive = false;
+        isYourTurn = false;
+        xoxStartBtn.style.display = "none";
+        xoxResetBtn.style.display = "block";
+        createMessage("System", `XOX Game Over: ${data.message}`);
+        if (data.draw) {
+            xoxStatus.innerText = "Game Draw!";
+        } else if (data.winner) {
+            const winnerDisplayName = data.winner === "X" ? playerXName : playerOName;
+            xoxStatus.innerText = `${winnerDisplayName} (${data.winner}) has won!`;
+        }
+        xoxCells.forEach((cell) => (cell.style.pointerEvents = "none"));
+        xoxStartBtn.disabled = false;
+    });
+
+    socketio.on("game_reset", (data) => {
+        initializeBoard();
+        createMessage("System", `XOX Game Reset: ${data.reason}`);
+        const userCount = parseInt(document.getElementById("user-count").innerText);
+        if (userCount >= 2) {
+            xoxStartBtn.disabled = false;
+            xoxStatus.innerText = 'Two players are in the room. Click "Start New XOX Game"!';
+        } else {
+            xoxStatus.innerText = "Need 2 players to start XOX.";
+        }
+    });
+
+    const startGame = () => {
+        if (parseInt(document.getElementById("user-count").innerText) < 2) {
+            showMessageBox("You need 2 players in the room to start an XOX game.", "alert");
+            return;
+        }
+        xoxStartBtn.disabled = true;
+        socketio.emit("game_start_request");
+    };
+
+    const resetGame = () => {
+        xoxResetBtn.disabled = true;
+        socketio.emit("game_reset_request");
+    };
+
+    const updateGameStatus = () => {
+        if (!gameActive) {
+            if (!xoxStatus.innerText.includes("won") && !xoxStatus.innerText.includes("Draw") && yourSymbol === null) {
+                const userCount = parseInt(document.getElementById("user-count").innerText);
+                xoxStatus.innerText =
+                    userCount < 2 ? "Need 2 players to start XOX." : "Waiting for a new game to start.";
+            }
+        } else {
+            const currentPlayerName = currentPlayer === "X" ? playerXName : playerOName;
+            const yourTurnText = isYourTurn ? "Your turn!" : "";
+            xoxStatus.innerText = `${currentPlayerName}'s turn (${currentPlayer}). ${yourTurnText}`;
+        }
+        xoxCells.forEach((cell) => {
+            if (gameActive && isYourTurn && board[parseInt(cell.dataset.index)] === "") {
+                cell.style.pointerEvents = "auto";
+            } else {
+                cell.style.pointerEvents = "none";
+            }
+        });
+    };
+
+    initializeBoard();
+
+    // --- Mobile Keyboard Alignment Logic ---
+    const adjustLayoutForKeyboard = () => {
+        const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+
+        const controlsHeight = controls.offsetHeight;
+        const inputsHeight = inputsContainer.offsetHeight;
+        const typingIndicatorHeight = typingIndicator.innerText ? typingIndicator.offsetHeight : 0;
+        const videoContainerHeight = document.getElementById("video-container").offsetHeight;
+        const xoxContainerHeight = isXOXVisible ? xoxGameContainer.offsetHeight : 0;
+
+        const chatContainerPaddingTop = parseFloat(getComputedStyle(chatContainer).paddingTop);
+        const chatContainerPaddingBottom = parseFloat(getComputedStyle(chatContainer).paddingBottom);
+        const totalContainerPadding = chatContainerPaddingTop + chatContainerPaddingBottom;
+
+        const messagesAvailableHeight =
+            viewportHeight -
+            controlsHeight -
+            inputsHeight -
+            typingIndicatorHeight -
+            videoContainerHeight -
+            xoxContainerHeight -
+            totalContainerPadding;
+
+        // Set reasonable minimum to avoid negative heights
+        const finalHeight = Math.max(120, messagesAvailableHeight);
+        messages.style.maxHeight = `${finalHeight}px`;
+
+        messages.scrollTop = messages.scrollHeight;
+
+        // Update CSS var for inputs height used in padding calculations
+        updateInputsHeightVar();
+    };
+
+    function updateInputsHeightVar() {
+        try {
+            const h = inputsContainer.offsetHeight || 64;
+            document.documentElement.style.setProperty("--inputs-height", `${h}px`);
+        } catch (e) {}
     }
-  });
 
-  // Ensure layout is adjusted when input receives focus (keyboard appears on mobile)
-  messageInput.addEventListener('focus', () => {
-    inputsContainer.classList.add('focused');
-    // Make container visible immediately
-    inputsContainer.style.opacity = '1';
-    inputsContainer.style.transform = 'translateY(0)';
-    adjustLayoutForKeyboard();
-    // On mobile, scroll messages into view when keyboard opens
-    setTimeout(() => {
-      messages.scrollTop = messages.scrollHeight;
-      inputsContainer.scrollIntoView({ behavior: 'smooth', block: 'end' });
-    }, 120);
-  });
-  messageInput.addEventListener('blur', () => {
-    setTimeout(() => {
-      inputsContainer.classList.remove('focused');
-      // small fade out effect if needed
-      inputsContainer.style.opacity = '';
-      inputsContainer.style.transform = '';
-      adjustLayoutForKeyboard();
-    }, 150);
-  });
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener("resize", adjustLayoutForKeyboard);
+    } else {
+        window.addEventListener("resize", adjustLayoutForKeyboard);
+    }
 
-  // improve remote video play reliability (some mobile browsers block autoplay until play() called)
-  remoteVideo.addEventListener('play', () => {
-    // no-op: this confirms remote started
-  });
+    // VisualViewport handlers for better mobile keyboard behavior
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener("resize", () => {
+            adjustLayoutForKeyboard();
+            // small defer to allow layout settle
+            setTimeout(() => (messages.scrollTop = messages.scrollHeight), 120);
+        });
+        window.visualViewport.addEventListener("scroll", () => {
+            // When keyboard opens, some browsers move the visual viewport; ensure input stays visible
+            adjustLayoutForKeyboard();
+        });
+    }
 
-/* ===== SIMPLE MOBILE KEYBOARD HANDLING ===== */
-const msgBox = document.querySelector('.messages');
-const inputField = document.querySelector('.inputs-container input');
+    /* ===== ROOM CODE AUTO COPY (FINAL) ===== */
+window.addEventListener("load", () => {
+    const el = document.getElementById("room-code");
+    if (!el) return;
 
-if (inputField && msgBox) {
-  inputField.addEventListener('focus', () => {
-    setTimeout(() => {
-      msgBox.scrollTop = msgBox.scrollHeight;
-    }, 300);
-  });
-}
+    const code = el.innerText.trim();
 
+    function fallbackCopy(text) {
+        const input = document.createElement("input");
+        input.value = text;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand("copy");
+        document.body.removeChild(input);
+    }
+
+    async function copyCode(showMsg=false) {
+        try {
+            await navigator.clipboard.writeText(code);
+        } catch {
+            fallbackCopy(code);
+        }
+
+        if (showMsg && typeof createMessage === "function") {
+            createMessage("System","Room code copied ✅");
+        }
+    }
+
+    /* ✅ AUTO COPY ONLY ON FIRST LOAD */
+    if (!sessionStorage.getItem("roomCopied")) {
+        setTimeout(()=>copyCode(true),1500);
+        sessionStorage.setItem("roomCopied","yes");
+    }
+
+    /* ✅ CLICK COPY */
+    el.onclick = () => copyCode(true);
+});
+
+    window.addEventListener("load", () => {
+        adjustLayoutForKeyboard();
+        updateInputsHeightVar();
+        updateInputsHeightVar();
+        const userCount = parseInt(document.getElementById("user-count").innerText);
+        if (userCount >= 2 && !gameActive) {
+            document.getElementById("xox-game-btn").disabled = false;
+            xoxStartBtn.disabled = false;
+            xoxStatus.innerText = 'Two players are in the room. Click "Start New XOX Game"!';
+        } else {
+            document.getElementById("xox-game-btn").disabled = true;
+            xoxStartBtn.disabled = true;
+        }
+    });
+
+    // Ensure layout is adjusted when input receives focus (keyboard appears on mobile)
+    messageInput.addEventListener("focus", () => {
+        inputsContainer.classList.add("focused");
+        // Make container visible immediately
+        inputsContainer.style.opacity = "1";
+        inputsContainer.style.transform = "translateY(0)";
+        adjustLayoutForKeyboard();
+        // On mobile, scroll messages into view when keyboard opens
+        setTimeout(() => {
+            messages.scrollTop = messages.scrollHeight;
+            inputsContainer.scrollIntoView({ behavior: "smooth", block: "end" });
+        }, 120);
+    });
+    messageInput.addEventListener("blur", () => {
+        setTimeout(() => {
+            inputsContainer.classList.remove("focused");
+            // small fade out effect if needed
+            inputsContainer.style.opacity = "";
+            inputsContainer.style.transform = "";
+            adjustLayoutForKeyboard();
+        }, 150);
+    });
+
+    // improve remote video play reliability (some mobile browsers block autoplay until play() called)
+    remoteVideo.addEventListener("play", () => {
+        // no-op: this confirms remote started
+    });
+
+    /* ===== SIMPLE MOBILE KEYBOARD HANDLING ===== */
+    const msgBox = document.querySelector(".messages");
+    const inputField = document.querySelector(".inputs-container input");
+
+    if (inputField && msgBox) {
+        inputField.addEventListener("focus", () => {
+            setTimeout(() => {
+                msgBox.scrollTop = msgBox.scrollHeight;
+            }, 300);
+        });
+    }
 </script>
 
 {% for msg in messages %}
 <script type="text/javascript">
-  createMessage("{{ msg.name }}", "{{ msg.message }}", "{{ msg.color }}");
+      createMessage("{{ msg.name }}", "{{ msg.message }}", "{{ msg.color }}");
 
-  /* --- ADDITIONAL REQUEST/RESPONSE FLOW PATCH ---
-   Improves reliability: when initiating video call or XOX, client emits multiple compatible event names
-   and includes both requester and target info. Also listens for alternate event names and forwards them
-   into existing handlers so other users get Accept/Reject popups.
-  */
+      /* --- ADDITIONAL REQUEST/RESPONSE FLOW PATCH ---
+       Improves reliability: when initiating video call or XOX, client emits multiple compatible event names
+       and includes both requester and target info. Also listens for alternate event names and forwards them
+       into existing handlers so other users get Accept/Reject popups.
+      */
 
-    // Ensure the generic start call path also includes requester info
-    const startBtn = document.getElementById("select-users-confirm");
-    if (startBtn) {
-      startBtn.addEventListener('click', () => {
-        // find selected target
-        const selected = document.querySelector('.user-select-item.selected');
-        const targetSid = selected ? selected.getAttribute('data-sid') : null;
-        const fromName = window.username || document.getElementById('current-user')?.innerText || 'Someone';
-        const payload = { target_sid: targetSid, requester_sid: (socketio && socketio.id) || null, from: fromName };
-        try { socketio.emit("call_request", payload); } catch(e) {}
-        try { socketio.emit("video_call_request", payload); } catch(e) {}
-        try { socketio.emit("request_video_call", payload); } catch(e) {}
+        // Ensure the generic start call path also includes requester info
+        const startBtn = document.getElementById("select-users-confirm");
+        if (startBtn) {
+          startBtn.addEventListener('click', () => {
+            // find selected target
+            const selected = document.querySelector('.user-select-item.selected');
+            const targetSid = selected ? selected.getAttribute('data-sid') : null;
+            const fromName = window.username || document.getElementById('current-user')?.innerText || 'Someone';
+            const payload = { target_sid: targetSid, requester_sid: (socketio && socketio.id) || null, from: fromName };
+            try { socketio.emit("call_request", payload); } catch(e) {}
+            try { socketio.emit("video_call_request", payload); } catch(e) {}
+            try { socketio.emit("request_video_call", payload); } catch(e) {}
+          });
+        }
+
+        // Map alternate incoming events to existing call_request handler
+        const altCallEvents = ["video_call_request","request_video_call","call_request"];
+        altCallEvents.forEach(ev => {
+          socketio.off && socketio.off(ev);
+          socketio.on(ev, (data)=>{
+            try {
+              // normalize fields
+              const normalized = {
+                requester_sid: data.requester_sid || data.from_sid || data.requester || data.fromId || data.requesterId || data.requester_id || data.requesterid || null,
+                from: data.from || data.name || data.username || 'Someone'
+              };
+              // reuse existing logic by emitting a synthetic call_request event if necessary
+              if (ev !== "call_request") {
+                socketio.emit("internal_forward_call_request", normalized);
+              } else {
+                // call existing handler directly if defined (the code above defines socketio.on('call_request', ...))
+                // if handler expects full object, pass original data
+                // we'll invoke the original callback by re-emitting under original name so existing handler runs too
+                // but to avoid loops, only emit if the incoming event was not exactly the original
+              }
+            } catch(e){ console.warn("altCallEvents handler", e); }
+          });
+        });
+
+        // Listen for internal forward and show the accept/reject using existing UI helper
+        socketio.off && socketio.off("internal_forward_call_request");
+        socketio.on("internal_forward_call_request", (data) => {
+          try {
+            // Reuse existing showMessageBox flow used by original call_request listener
+            if (typeof showMessageBox === 'function') {
+              remoteRequesterSid = data.requester_sid || remoteRequesterSid;
+              showMessageBox(`${data.from} is calling you. Do you want to accept?`, 'confirm',
+                async () => {
+                  try {
+                    isInitiator = false; isCalling = true;
+                    await startVideoCallInternal();
+                    socketio.emit("call_response", { action: "accept", requester_sid: data.requester_sid });
+                    await createAnswer();
+                  } catch(e){ console.error(e); }
+                },
+                () => {
+                  socketio.emit("call_response", { action: "reject", requester_sid: data.requester_sid });
+                }
+              );
+            }
+          } catch(e){ console.error(e); }
+        });
+        messageInput.addEventListener("focus", () => {
+      setTimeout(() => {
+        messages.scrollTop = messages.scrollHeight;
+      }, 300);
+    });
+        // --- XOX request flow ---
+        const origStartGame = window.startGame || function(){};
+        window.startGame = function(){
+          try {
+            const fromName = window.username || document.getElementById('current-user')?.innerText || 'Someone';
+            const payload = { requester_sid: (socketio && socketio.id) || null, from: fromName };
+            try { socketio.emit("game_start_request", payload); } catch(e){}
+            try { socketio.emit("xox_request", payload); } catch(e){}
+            try { socketio.emit("request_xox", payload); } catch(e){}
+            return origStartGame.apply(this, arguments);
+          } catch(e){ console.error("startGame patch error", e); }
+        };
+
+        // Map alternate incoming events to xox handler: show accept/decline popup and emit responses
+        const altXox = ["xox_request","request_xox","game_start_request"];
+        altXox.forEach(ev => {
+          socketio.off && socketio.off(ev);
+          socketio.on(ev, (data) => {
+            try {
+              const from = data.from || 'Someone';
+              const requester_sid = data.requester_sid || data.requester || null;
+              // show using existing showMessageBox helper
+              if (typeof showMessageBox === 'function') {
+                showMessageBox(`${from} wants to play XOX. Accept?`, 'confirm',
+                  () => {
+                    socketio.emit("xox_response", { action: "accept", requester_sid: requester_sid });
+                    // start game locally if accept
+                    try { window.initializeXoxAsPlayer && window.initializeXoxAsPlayer(); } catch(e){}
+                  },
+                  () => {
+                    socketio.emit("xox_response", { action: "reject", requester_sid: requester_sid });
+                  }
+                );
+              }
+            } catch(e){ console.error("xox alt handler", e); }
+          });
+        });
+
+        console.info("Request/response flow patch installed.");
+      } catch(e){ console.error("Request/response patch failed:", e); }
+      })();
+
+    /* ===== SIMPLE MOBILE KEYBOARD HANDLING ===== */
+    const msgBox = document.querySelector('.messages');
+    const inputField = document.querySelector('.inputs-container input');
+
+    if (inputField && msgBox) {
+      inputField.addEventListener('focus', () => {
+        setTimeout(() => {
+          msgBox.scrollTop = msgBox.scrollHeight;
+        }, 300);
       });
     }
-
-    // Map alternate incoming events to existing call_request handler
-    const altCallEvents = ["video_call_request","request_video_call","call_request"];
-    altCallEvents.forEach(ev => {
-      socketio.off && socketio.off(ev);
-      socketio.on(ev, (data)=>{
-        try {
-          // normalize fields
-          const normalized = {
-            requester_sid: data.requester_sid || data.from_sid || data.requester || data.fromId || data.requesterId || data.requester_id || data.requesterid || null,
-            from: data.from || data.name || data.username || 'Someone'
-          };
-          // reuse existing logic by emitting a synthetic call_request event if necessary
-          if (ev !== "call_request") {
-            socketio.emit("internal_forward_call_request", normalized);
-          } else {
-            // call existing handler directly if defined (the code above defines socketio.on('call_request', ...))
-            // if handler expects full object, pass original data
-            // we'll invoke the original callback by re-emitting under original name so existing handler runs too
-            // but to avoid loops, only emit if the incoming event was not exactly the original
-          }
-        } catch(e){ console.warn("altCallEvents handler", e); }
-      });
-    });
-
-    // Listen for internal forward and show the accept/reject using existing UI helper
-    socketio.off && socketio.off("internal_forward_call_request");
-    socketio.on("internal_forward_call_request", (data) => {
-      try {
-        // Reuse existing showMessageBox flow used by original call_request listener
-        if (typeof showMessageBox === 'function') {
-          remoteRequesterSid = data.requester_sid || remoteRequesterSid;
-          showMessageBox(`${data.from} is calling you. Do you want to accept?`, 'confirm',
-            async () => {
-              try {
-                isInitiator = false; isCalling = true;
-                await startVideoCallInternal();
-                socketio.emit("call_response", { action: "accept", requester_sid: data.requester_sid });
-                await createAnswer();
-              } catch(e){ console.error(e); }
-            },
-            () => {
-              socketio.emit("call_response", { action: "reject", requester_sid: data.requester_sid });
-            }
-          );
-        }
-      } catch(e){ console.error(e); }
-    });
-    messageInput.addEventListener("focus", () => {
-  setTimeout(() => {
-    messages.scrollTop = messages.scrollHeight;
-  }, 300);
-});
-    // --- XOX request flow ---
-    const origStartGame = window.startGame || function(){};
-    window.startGame = function(){
-      try {
-        const fromName = window.username || document.getElementById('current-user')?.innerText || 'Someone';
-        const payload = { requester_sid: (socketio && socketio.id) || null, from: fromName };
-        try { socketio.emit("game_start_request", payload); } catch(e){}
-        try { socketio.emit("xox_request", payload); } catch(e){}
-        try { socketio.emit("request_xox", payload); } catch(e){}
-        return origStartGame.apply(this, arguments);
-      } catch(e){ console.error("startGame patch error", e); }
-    };
-
-    // Map alternate incoming events to xox handler: show accept/decline popup and emit responses
-    const altXox = ["xox_request","request_xox","game_start_request"];
-    altXox.forEach(ev => {
-      socketio.off && socketio.off(ev);
-      socketio.on(ev, (data) => {
-        try {
-          const from = data.from || 'Someone';
-          const requester_sid = data.requester_sid || data.requester || null;
-          // show using existing showMessageBox helper
-          if (typeof showMessageBox === 'function') {
-            showMessageBox(`${from} wants to play XOX. Accept?`, 'confirm',
-              () => {
-                socketio.emit("xox_response", { action: "accept", requester_sid: requester_sid });
-                // start game locally if accept
-                try { window.initializeXoxAsPlayer && window.initializeXoxAsPlayer(); } catch(e){}
-              },
-              () => {
-                socketio.emit("xox_response", { action: "reject", requester_sid: requester_sid });
-              }
-            );
-          }
-        } catch(e){ console.error("xox alt handler", e); }
-      });
-    });
-
-    console.info("Request/response flow patch installed.");
-  } catch(e){ console.error("Request/response patch failed:", e); }
-  })();
-
-/* ===== SIMPLE MOBILE KEYBOARD HANDLING ===== */
-const msgBox = document.querySelector('.messages');
-const inputField = document.querySelector('.inputs-container input');
-
-if (inputField && msgBox) {
-  inputField.addEventListener('focus', () => {
-    setTimeout(() => {
-      msgBox.scrollTop = msgBox.scrollHeight;
-    }, 300);
-  });
-}
-
 </script>
-{% endfor %}
-{% endblock %}
+{% endfor %} {% endblock %}
