@@ -1214,6 +1214,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             const remoteStream = event.streams[0];
                             remoteVideo.srcObject = remoteStream;
                             remoteVideoWrapper.classList.add("active");
+                            videoContainer.appendChild(localVideoWrapper);
                             // ensure autoplay
                             try {
                                 remoteVideo.onloadedmetadata = () => remoteVideo.play().catch(() => {});
