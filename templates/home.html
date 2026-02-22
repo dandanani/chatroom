@@ -2,179 +2,336 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Chat Room</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+    <title>Stellar Chat | Multiverse Edition</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
     <style>
-        /* Global Styles */
+        :root {
+            --primary: #6366f1;
+            --secondary: #a855f7;
+            --accent: #22d3ee;
+            --bg-dark: #020617;
+            --glass: rgba(15, 23, 42, 0.6);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --text: #ffffff;
+        }
+
+        body.light-mode {
+            --primary: #f59e0b;
+            --secondary: #ef4444;
+            --accent: #f97316;
+            --bg-dark: #fff7ed;
+            --glass: rgba(255, 255, 255, 0.7);
+            --glass-border: rgba(0, 0, 0, 0.1);
+            --text: #1e293b;
+        }
+
+        * {
+            margin: 0; padding: 0; box-sizing: border-box;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            transition: background-color 0.5s ease;
+        }
+
         body {
-            font-family: 'Arial', sans-serif;
-            background: linear-gradient(135deg, #6e7dff, #a0c4ff);
-            margin: 0;
-            padding: 0;
+            background-color: var(--bg-dark);
+            color: var(--text);
+            height: 100vh;
+            overflow: hidden;
             display: flex;
             justify-content: center;
             align-items: center;
-            height: 100vh;
-            overflow: hidden;
+            position: fixed;
+            width: 100%;
+        }
+
+        #canvas-container {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: -1;
+        }
+
+        .theme-switch-wrapper {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            z-index: 100;
+        }
+
+        .theme-switch {
+            display: inline-block;
+            height: 34px;
+            position: relative;
+            width: 60px;
+        }
+
+        .theme-switch input { display: none; }
+
+        .slider {
+            background-color: #334155;
+            bottom: 0; cursor: pointer; left: 0;
+            position: absolute; right: 0; top: 0;
+            transition: .4s; border-radius: 34px;
+        }
+
+        .slider:before {
+            background-color: white;
+            bottom: 4px; content: "";
+            height: 26px; left: 4px;
+            position: absolute; transition: .4s;
+            width: 26px; border-radius: 50%;
+        }
+
+        input:checked + .slider { background-color: var(--primary); }
+        input:checked + .slider:before { transform: translateX(26px); }
+
+        /* --- GREETING STYLE --- */
+        .greeting-text {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+            color: var(--text);
+            opacity: 0.9;
         }
 
         .container {
-            background: #fff;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            width: 100%;
-            max-width: 400px;
-            padding: 20px;
-            box-sizing: border-box;
-            animation: fadeIn 1s ease-in-out;
+            background: var(--glass);
+            backdrop-filter: blur(30px) saturate(200%);
+            -webkit-backdrop-filter: blur(30px) saturate(200%);
+            border: 1px solid var(--glass-border);
+            border-radius: 35px;
+            padding: 40px 30px;
+            width: 92%;
+            max-width: 420px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            z-index: 10;
+            opacity: 0;
+            transform: translateY(40px);
         }
 
         h3 {
+            font-size: 2.2rem;
+            font-weight: 800;
             text-align: center;
-            color: #333;
-            margin-bottom: 20px;
+            margin-bottom: 30px;
+            background: linear-gradient(to right, #fff, var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
 
-        .form-group {
-            margin-bottom: 15px;
+        .light-mode h3 {
+            background: linear-gradient(to right, #000, var(--primary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
 
         label {
             display: block;
-            font-weight: bold;
-            margin-bottom: 5px;
-            color: #555;
+            font-size: 0.7rem;
+            font-weight: 800;
+            margin-bottom: 10px;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 2px;
         }
 
         input[type="text"] {
             width: 100%;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            box-sizing: border-box;
-            transition: border-color 0.3s;
+            padding: 18px;
+            background: rgba(0, 0, 0, 0.25);
+            border: 1px solid var(--glass-border);
+            border-radius: 18px;
+            color: var(--text);
+            font-size: 16px;
+            transition: 0.3s;
         }
 
-        input[type="text"]:focus {
-            border-color: #6e7dff;
-            outline: none;
-        }
+        .light-mode input[type="text"] { background: rgba(255, 255, 255, 0.5); }
 
-        .join {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
+        .join { display: flex; gap: 12px; margin-top: 10px; }
+        .join input[type="text"] { flex: 2; }
 
-        .join input[type="text"] {
-            width: 65%;
-            margin-right: 10px;
-        }
-
-        .join button {
-            width: 35%;
-            padding: 10px;
-            border: none;
-            border-radius: 5px;
-            background-color: #4CAF50;
-            color: white;
-            font-weight: bold;
+        button {
             cursor: pointer;
-            transition: background-color 0.3s;
+            border: none;
+            border-radius: 18px;
+            font-weight: 700;
+            transition: 0.3s;
         }
 
-        .join button:hover {
-            background-color: #45a049;
+        button[name="join"] {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text);
+            border: 1px solid var(--glass-border);
         }
 
         .create-btn {
             width: 100%;
-            padding: 12px;
-            border: none;
-            border-radius: 5px;
-            background-color: #007bff;
+            padding: 20px;
+            margin-top: 25px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
             color: white;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 10px;
-            transition: background-color 0.3s;
+            box-shadow: 0 15px 30px rgba(99, 102, 241, 0.3);
         }
 
-        .create-btn:hover {
-            background-color: #0056b3;
+        .mode-selection {
+            display: flex;
+            background: rgba(0, 0, 0, 0.15);
+            padding: 8px;
+            border-radius: 18px;
+            margin: 25px 0;
+            border: 1px solid var(--glass-border);
         }
 
         .mode-selection label {
-            display: inline-block;
-            margin-right: 15px;
-            font-weight: normal;
+            flex: 1; text-align: center; padding: 12px; margin: 0;
+            cursor: pointer; border-radius: 12px; color: var(--text);
+            font-size: 0.85rem; text-transform: none;
+        }
+
+        .mode-selection label:has(input:checked) {
+            background: var(--primary);
+            color: white;
         }
 
         .error {
-            color: crimson;
-            background-color: #ffeaea;
-            border: 1px solid crimson;
-            padding: 10px;
-            border-radius: 5px;
-            margin-top: 15px;
-        }
-
-        .error ul {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-20px); }
-            to { opacity: 1; transform: translateY(0); }
+            margin-top: 20px; padding: 15px; border-radius: 15px;
+            font-size: 0.85rem; text-align: center;
+            background: rgba(220, 38, 38, 0.1); color: #ef4444;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h3>ℂ𝕣𝕖𝕒𝕥𝕖/𝕁𝕠𝕚𝕟 𝕥𝕙𝕖 𝕣𝕠𝕠𝕞</h3>
-        <form method="post" class="buttons">
+
+    <div class="theme-switch-wrapper">
+        <label class="theme-switch" for="checkbox">
+            <input type="checkbox" id="checkbox" />
+            <div class="slider"></div>
+        </label>
+    </div>
+
+    <div id="canvas-container"></div>
+
+    <div class="container" id="main-card">
+        <div class="greeting-text" id="greeting">Hi, Champion.......🚀</div>
+
+        <h3>𝕄𝕦𝕝𝕥𝕚𝕧𝕖𝕣𝕤𝕖 ℂ𝕙𝕒𝕥</h3>
+
+        <form method="post">
             <div class="form-group">
-                <label for="name">Name:</label>
-                <input
-                    type="text"
-                    id="name"
-                    placeholder="Enter your Name"
-                    name="name"
-                    value="{{name}}"
-                />
-            </div>
-            <div class="form-group join">
-                <input
-                    type="text"
-                    id="code"
-                    placeholder="Room Code"
-                    name="code"
-                    value="{{code}}"
-                />
-                <button type="submit" name="join">Join a Room</button>
+                <label>Pilot Name</label>
+                <input type="text" id="name" name="name" placeholder="Name" value="{{name}}" required />
             </div>
 
-            <div class="form-group mode-selection">
-                <label><input type="radio" name="mode" value="full" checked /> Full Chat Mode</label>
-                <label><input type="radio" name="mode" value="privacy" /> Privacy Mode</label>
+            <div class="form-group">
+                <label>Galaxy Coordinates</label>
+                <div class="join">
+                    <input type="text" id="code" name="code" placeholder="Room ID" value="{{code}}" />
+                    <button type="submit" name="join">Join</button>
+                </div>
             </div>
 
-            <button type="submit" name="create" class="create-btn">Create a Room</button>
+            <div class="mode-selection">
+                <label><input type="radio" name="mode" value="full" checked style="display:none"> Open Room</label>
+                <label><input type="radio" name="mode" value="privacy" style="display:none"> Ghost Mode</label>
+            </div>
+
+            <button type="submit" name="create" class="create-btn">Initialize Universe</button>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
-                        <div class="error" style="color: {{ 'crimson' if category == 'error' else 'green' }}; border-color: {{ 'crimson' if category == 'error' else 'green' }};">
-                            <ul>
-                                <li>{{ message }}</li>
-                            </ul>
-                        </div>
+                        <div class="error"> {{ message }} </div>
                     {% endfor %}
                 {% endif %}
             {% endwith %}
         </form>
     </div>
+
+    <script>
+        // --- RANDOM GREETING LOGIC ---
+        const names = [
+            "Champion 🏆", "Legend 👑", "Explorer 🧭", "Pilot 🚀", "Commander 🪖", "Nomad 🌍", "Seeker 🔎",
+    "Star-Lord ⭐", "Galaxy-Traveler 🌌", "Ace ♠️", "Maverick 🔥", "Titan 🗿", "Rogue 🃏", "Aries ♈",
+    "Nova 💫", "Phoenix 🔥", "Orion ✨", "Apex 📈", "Echo 🔊", "Atlas 🌎", "Aero ✈️", "Blaze 🔥",
+    "Cyan 🔵", "Drift 🌊", "Flux ⚡", "Glitch 👾", "Hunter 🏹", "Ignis 🔥", "Jade 💎", "Kai 🌊",
+    "Luna 🌙", "Matrix 🧠", "Neo 🕶️", "Omega ♾️", "Pulse 💓", "Quark ⚛️", "Raze 💥", "Solar ☀️",
+    "Terra 🌱", "Ultra 🚀", "Viper 🐍", "Wolf 🐺", "Xenon 💡", "Yoda 🧙", "Zion 🏙️", "Aura 🌀",
+    "Cipher 🔐", "Dagger 🗡️", "Enigma ❓", "Falcon 🦅", "Ghost 👻", "Havoc 💣", "Ion ⚡", "Jet ✈️",
+    "Krypton 🪐", "Laser 🔫", "Mist 🌫️", "Night 🌃", "Orb 🔮", "Pixel 🧩", "Quantum 🧬", "Raven 🐦‍⬛"
+        ];
+
+        function setRandomGreeting() {
+            const randomName = names[Math.floor(Math.random() * names.length)];
+            document.getElementById('greeting').innerText = `Hi, ${randomName}......`;
+        }
+
+        // --- THREE.JS BACKGROUND ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const starsGeometry = new THREE.BufferGeometry();
+        const starCount = 5000;
+        const posArray = new Float32Array(starCount * 3);
+        for(let i=0; i < starCount * 3; i++) {
+            posArray[i] = (Math.random() - 0.5) * 15;
+        }
+        starsGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+        const starsMaterial = new THREE.PointsMaterial({ size: 0.015, color: 0xffffff });
+        const starsMesh = new THREE.Points(starsGeometry, starsMaterial);
+        scene.add(starsMesh);
+
+        const sphereGeo = new THREE.IcosahedronGeometry(2, 1);
+        const sphereMat = new THREE.MeshBasicMaterial({ color: 0x22d3ee, wireframe: true, transparent: true, opacity: 0.2 });
+        const universeBall = new THREE.Mesh(sphereGeo, sphereMat);
+        scene.add(universeBall);
+
+        camera.position.z = 5;
+
+        // Theme Toggle
+        const toggleSwitch = document.querySelector('#checkbox');
+        toggleSwitch.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                document.body.classList.add('light-mode');
+                gsap.to(universeBall.material.color, { r: 0.96, g: 0.62, b: 0.04 });
+                gsap.to(starsMaterial.color, { r: 1, g: 0.45, b: 0.08 });
+            } else {
+                document.body.classList.remove('light-mode');
+                gsap.to(universeBall.material.color, { r: 0.13, g: 0.82, b: 0.93 });
+                gsap.to(starsMaterial.color, { r: 1, g: 1, b: 1 });
+            }
+        });
+
+        // Animation
+        let mouseX = 0, mouseY = 0;
+        document.addEventListener('mousemove', (e) => {
+            mouseX = (e.clientX - window.innerWidth / 2) / 250;
+            mouseY = (e.clientY - window.innerHeight / 2) / 250;
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            starsMesh.rotation.y += 0.0005;
+            universeBall.rotation.y += 0.003;
+            camera.position.x += (mouseX - camera.position.x) * 0.05;
+            camera.position.y += (-mouseY - camera.position.y) * 0.05;
+            camera.lookAt(scene.position);
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.onload = () => {
+            setRandomGreeting(); // Trigger greeting on load
+            gsap.to("#main-card", { opacity: 1, y: 0, duration: 1.2, ease: "expo.out" });
+        };
+    </script>
 </body>
 </html>
